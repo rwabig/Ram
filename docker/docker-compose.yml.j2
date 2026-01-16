@@ -1,0 +1,51 @@
+services:
+  code-server:
+    image: codercom/code-server:4.26.1
+    container_name: code-server
+    restart: unless-stopped
+    user: "1000:1000"
+    environment:
+      TZ: UTC
+      PASSWORD: "{{ code_server_password }}"
+      DEFAULT_WORKSPACE: /home/coder/project
+    volumes:
+      - ./data/code-server/projects:/home/coder/project
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - vscode-net
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./data/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./data/nginx/certbot:/var/www/certbot:ro
+      - ./data/nginx/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      code-server:
+        condition: service_healthy
+    networks:
+      - vscode-net
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    volumes:
+      - ./data/nginx/letsencrypt:/etc/letsencrypt
+      - ./data/nginx/certbot:/var/www/certbot
+    entrypoint: certbot
+
+networks:
+  vscode-net:
+    driver: bridge

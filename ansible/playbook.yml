@@ -1,0 +1,236 @@
+---
+- name: Deploy Production VS Code Server with Nginx & Let's Encrypt
+  hosts: vscode_servers
+  become: true
+  vars:
+    domain_name: "ide.ucclab.io"
+    admin_email: "admin@ucclab.io"
+    code_server_password: "{{ vault_code_server_password }}"
+    project_directory: "/opt/vscode-server"
+    timezone: "UTC"
+    letsencrypt_environment: "production"   # "staging" or "production"
+    backup_directory: "/var/backups/vscode-server"
+
+  pre_tasks:
+    - name: Assert supported OS
+      assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+          - ansible_distribution_version is version("22.04", ">=")
+        fail_msg: "Only Ubuntu 22.04+ supported"
+
+  tasks:
+    # ------------------------------------------------------------
+    # SYSTEM
+    # ------------------------------------------------------------
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install base packages
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - ufw
+          - cron
+        state: present
+
+    # ------------------------------------------------------------
+    # DOCKER (CLEAN INSTALL)
+    # ------------------------------------------------------------
+    - name: Remove legacy Docker packages
+      apt:
+        name:
+          - docker
+          - docker-engine
+          - docker.io
+          - docker-ce
+          - docker-ce-cli
+          - containerd
+          - runc
+        state: absent
+      register: docker_legacy_removed
+
+    - name: Remove legacy Docker data directories (safe)
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/docker
+        - /var/lib/containerd
+      when: docker_legacy_removed.changed
+
+    - name: Add Docker GPG key
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: >
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/ubuntu
+          {{ ansible_distribution_release }} stable
+        state: present
+        update_cache: yes
+
+    - name: Install Docker Engine and plugins
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    # ------------------------------------------------------------
+    # FIREWALL
+    # ------------------------------------------------------------
+    - name: Allow SSH
+      ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+
+    - name: Allow HTTP
+      ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+
+    - name: Allow HTTPS
+      ufw:
+        rule: allow
+        port: "443"
+        proto: tcp
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+        policy: deny
+
+    # ------------------------------------------------------------
+    # DIRECTORIES
+    # ------------------------------------------------------------
+    - name: Create project directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - "{{ project_directory }}"
+        - "{{ project_directory }}/data"
+        - "{{ project_directory }}/data/code-server"
+        - "{{ project_directory }}/data/code-server/projects"
+        - "{{ project_directory }}/data/nginx"
+        - "{{ project_directory }}/data/nginx/conf.d"
+        - "{{ project_directory }}/data/nginx/certbot"
+        - "{{ project_directory }}/data/nginx/letsencrypt"
+        - "{{ project_directory }}/scripts"
+        - "{{ backup_directory }}"
+
+    # ------------------------------------------------------------
+    # CONFIG FILES
+    # ------------------------------------------------------------
+    - name: Deploy docker-compose.yml
+      template:
+        src: ../docker/docker-compose.yml.j2
+        dest: "{{ project_directory }}/docker-compose.yml"
+        mode: "0644"
+
+    - name: Deploy nginx.conf
+      template:
+        src: ../docker/nginx.conf.j2
+        dest: "{{ project_directory }}/data/nginx/conf.d/vscode.conf"
+        mode: "0644"
+
+    # ------------------------------------------------------------
+    # CERTBOT BOOTSTRAP SCRIPT
+    # ------------------------------------------------------------
+    - name: Install Let's Encrypt bootstrap script
+      copy:
+        src: ../scripts/init-letsencrypt.sh
+        dest: "{{ project_directory }}/scripts/init-letsencrypt.sh"
+        mode: "0755"
+
+    # ------------------------------------------------------------
+    # BACKUP SCRIPT
+    # ------------------------------------------------------------
+    - name: Install backup script
+      copy:
+        src: ../scripts/backup.sh
+        dest: "{{ project_directory }}/scripts/backup.sh"
+        mode: "0755"
+
+    - name: Install daily backup cron job
+      cron:
+        name: "Daily VS Code Server backup"
+        minute: "15"
+        hour: "2"
+        job: "{{ project_directory }}/scripts/backup.sh"
+
+    # ------------------------------------------------------------
+    # CERTBOT RENEWAL
+    # ------------------------------------------------------------
+    - name: Install certificate renewal cron job
+      cron:
+        name: "Renew Let's Encrypt certificates"
+        minute: "0"
+        hour: "3"
+        job: >
+          cd {{ project_directory }} &&
+          docker compose run --rm certbot renew --quiet &&
+          docker compose exec nginx nginx -s reload
+
+    # ------------------------------------------------------------
+    # START SERVICES
+    # ------------------------------------------------------------
+    - name: Start Docker stack
+      command: docker compose up -d
+      args:
+        chdir: "{{ project_directory }}"
+      register: compose_result
+      changed_when: "'Started' in compose_result.stdout or 'Recreated' in compose_result.stdout"
+
+    - name: Bootstrap TLS certificates
+      command: "{{ project_directory }}/scripts/init-letsencrypt.sh"
+      args:
+        creates: "{{ project_directory }}/data/nginx/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+
+    - name: Wait for HTTPS to be reachable
+      wait_for:
+        host: "{{ domain_name }}"
+        port: 443
+        timeout: 60
+
+    # ------------------------------------------------------------
+    # OUTPUT
+    # ------------------------------------------------------------
+    - name: Deployment summary
+      debug:
+        msg:
+          - "✅ VS Code Server deployed successfully"
+          - "🌐 URL: https://{{ domain_name }}"
+          - "📁 Project path: {{ project_directory }}"
+          - "🔧 Status: docker compose -f {{ project_directory }}/docker-compose.yml ps"
+          - "📜 Logs: docker compose -f {{ project_directory }}/docker-compose.yml logs -f"
