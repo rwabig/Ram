@@ -2,22 +2,39 @@
 - name: Deploy Production VS Code Server with Nginx & Let's Encrypt
   hosts: vscode_servers
   become: true
+
   vars:
     domain_name: "ide.ucclab.io"
     admin_email: "admin@ucclab.io"
     code_server_password: "{{ vault_code_server_password }}"
     project_directory: "/opt/vscode-server"
     timezone: "UTC"
-    letsencrypt_environment: "production"   # "staging" or "production"
+    letsencrypt_environment: "production"
     backup_directory: "/var/backups/vscode-server"
 
+    # 🔒 SAFETY CONTROLS — NEVER DESTROYS DATA BY DEFAULT
+    docker_allow_data_wipe: false
+    docker_wipe_confirm: ""
+
   pre_tasks:
+    # ------------------------------------------------------------
+    # SAFETY & PLATFORM ASSERTIONS
+    # ------------------------------------------------------------
     - name: Assert supported OS
       assert:
         that:
-          - ansible_distribution == "Ubuntu"
-          - ansible_distribution_version is version("22.04", ">=")
+          - ansible_facts['distribution'] == "Ubuntu"
+          - ansible_facts['distribution_version'] is version("22.04", ">=")
         fail_msg: "Only Ubuntu 22.04+ supported"
+
+    - name: Fail if destructive Docker wipe is not explicitly confirmed
+      assert:
+        that:
+          - docker_wipe_confirm == "DESTROY-DOCKER-DATA"
+        fail_msg: >
+          Refusing to wipe Docker data. To enable, set:
+          docker_allow_data_wipe=true AND docker_wipe_confirm=DESTROY-DOCKER-DATA
+      when: docker_allow_data_wipe | bool
 
   tasks:
     # ------------------------------------------------------------
@@ -39,30 +56,39 @@
           - cron
         state: present
 
+    - name: Set timezone
+      timezone:
+        name: "{{ timezone }}"
+
     # ------------------------------------------------------------
-    # DOCKER (CLEAN INSTALL)
+    # DOCKER — PHASE 1: Remove only conflicting Ubuntu packages
     # ------------------------------------------------------------
-    - name: Remove legacy Docker packages
+    - name: Remove conflicting Docker packages (SAFE)
       apt:
         name:
           - docker
           - docker-engine
           - docker.io
-          - docker-ce
-          - docker-ce-cli
-          - containerd
-          - runc
         state: absent
-      register: docker_legacy_removed
 
-    - name: Remove legacy Docker data directories (safe)
+    # ------------------------------------------------------------
+    # DOCKER — PHASE 2: Repo + install (clean, idempotent)
+    # ------------------------------------------------------------
+    - name: Remove legacy Docker repo/key conflicts
       file:
         path: "{{ item }}"
         state: absent
       loop:
-        - /var/lib/docker
-        - /var/lib/containerd
-      when: docker_legacy_removed.changed
+        - /etc/apt/sources.list.d/docker.list
+        - /etc/apt/sources.list.d/docker-ce.list
+        - /etc/apt/keyrings/docker.gpg
+        - /etc/apt/keyrings/docker.asc
+
+    - name: Create Docker keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
 
     - name: Add Docker GPG key
       get_url:
@@ -72,11 +98,12 @@
 
     - name: Add Docker repository
       apt_repository:
-        repo: >
-          deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
-          https://download.docker.com/linux/ubuntu
-          {{ ansible_distribution_release }} stable
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
         state: present
+        filename: docker
+
+    - name: Update apt cache after Docker repo
+      apt:
         update_cache: yes
 
     - name: Install Docker Engine and plugins
@@ -89,7 +116,45 @@
           - docker-compose-plugin
         state: present
 
-    - name: Enable Docker
+    # ------------------------------------------------------------
+    # DOCKER — PHASE 3: OPTIONAL DESTRUCTIVE WIPE (EXPLICIT ONLY)
+    # ------------------------------------------------------------
+    - name: Check if Docker service exists
+      stat:
+        path: /lib/systemd/system/docker.service
+      register: docker_service
+
+    - block:
+        - name: Stop Docker before wipe
+          systemd:
+            name: docker
+            state: stopped
+
+        - name: Remove ALL Docker data (DESTRUCTIVE)
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /var/lib/docker
+            - /var/lib/containerd
+
+        - name: Recreate Docker directories
+          file:
+            path: "{{ item }}"
+            state: directory
+            mode: "0755"
+          loop:
+            - /var/lib/docker
+            - /var/lib/containerd
+
+      when:
+        - docker_allow_data_wipe | bool
+        - docker_service.stat.exists
+
+    # ------------------------------------------------------------
+    # DOCKER — PHASE 4: Enable runtime
+    # ------------------------------------------------------------
+    - name: Enable Docker service
       systemd:
         name: docker
         state: started

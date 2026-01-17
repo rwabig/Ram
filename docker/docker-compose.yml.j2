@@ -1,50 +1,124 @@
+version: "3.9"
+
 services:
   code-server:
-    image: codercom/code-server:4.26.1
+    image: codercom/code-server:4.26.1@sha256:2d5f2a4cbe5b3df1c6e3fa7a50df9d3fd09bb57dfb24b00b18c96d0b21f03c42
     container_name: code-server
     restart: unless-stopped
+
     user: "1000:1000"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
     environment:
       TZ: UTC
       PASSWORD: "{{ code_server_password }}"
       DEFAULT_WORKSPACE: /home/coder/project
+
     volumes:
-      - ./data/code-server/projects:/home/coder/project
+      - ./data/code-server/projects:/home/coder/project:rw
+      - ./data/code-server/config:/home/coder/.config:rw
+
+    tmpfs:
+      - /tmp
+      - /run
+
     expose:
       - "8080"
+
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080", "||", "exit", "1"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
       start_period: 40s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+        reservations:
+          memory: 512m
+
     networks:
       - vscode-net
 
+
   nginx:
-    image: nginx:1.25-alpine
+    image: nginx:1.25.4-alpine@sha256:2fd8f31c0dbeb67e92c36bb021c218d01b54006b71f9fa8f8f76e7f65c9a3c60
     container_name: nginx-proxy
     restart: unless-stopped
+
+    user: "101:101"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
     ports:
       - "80:80"
       - "443:443"
+
     volumes:
       - ./data/nginx/conf.d:/etc/nginx/conf.d:ro
       - ./data/nginx/certbot:/var/www/certbot:ro
       - ./data/nginx/letsencrypt:/etc/letsencrypt:ro
+      - ./data/nginx/cache:/var/cache/nginx:rw
+      - ./data/nginx/run:/var/run:rw
+
+    tmpfs:
+      - /tmp
+
     depends_on:
       code-server:
         condition: service_healthy
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
+        reservations:
+          memory: 128m
+
     networks:
       - vscode-net
 
+
   certbot:
-    image: certbot/certbot:latest
+    image: certbot/certbot:v2.9.0@sha256:5f4b1cc4c5cfc0a19f68f6f8ad98c07f7b7f5ad7c7d4c02a0c8c7b0c2bb0a51e
     container_name: certbot
+    restart: "no"
+
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
     volumes:
-      - ./data/nginx/letsencrypt:/etc/letsencrypt
-      - ./data/nginx/certbot:/var/www/certbot
+      - ./data/nginx/letsencrypt:/etc/letsencrypt:rw
+      - ./data/nginx/certbot:/var/www/certbot:rw
+
+    tmpfs:
+      - /tmp
+
     entrypoint: certbot
+
+    networks:
+      - vscode-net
+
 
 networks:
   vscode-net:
