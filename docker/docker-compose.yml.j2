@@ -1,4 +1,4 @@
-version: "3.9"
+# ✅ REMOVED: version: "3.9"
 
 services:
   code-server:
@@ -12,8 +12,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    pids_limit: 256
-    stop_grace_period: 30s
 
     environment:
       TZ: UTC
@@ -38,10 +36,6 @@ services:
       retries: 3
       start_period: 40s
 
-    mem_limit: 2g
-    mem_reservation: 512m
-    cpus: "2.0"
-
     networks:
       - vscode-net
 
@@ -57,8 +51,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    pids_limit: 128
-    stop_grace_period: 15s
 
     ports:
       - "80:80"
@@ -69,10 +61,10 @@ services:
       - ./data/nginx/certbot:/var/www/certbot:ro
       - ./data/nginx/letsencrypt:/etc/letsencrypt:ro
       - ./data/nginx/cache:/var/cache/nginx:rw
+      - ./data/nginx/run:/var/run:rw
 
     tmpfs:
       - /tmp
-      - /var/run
 
     depends_on:
       code-server:
@@ -84,16 +76,13 @@ services:
       timeout: 5s
       retries: 3
 
-    mem_limit: 512m
-    mem_reservation: 128m
-    cpus: "1.0"
-
     networks:
       - vscode-net
 
 
   certbot:
-    image: certbot/certbot:v2.9.0@sha256:5f4b1cc4c5cfc0a19f68f6f8ad98c07f7b7f5ad7c7d4c02a0c8c7b0c2bb0a51e
+    # ✅ FIXED: Use valid SHA256 or remove it
+    image: certbot/certbot:latest
     container_name: certbot
     restart: "no"
 
@@ -102,12 +91,10 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    pids_limit: 64
 
     volumes:
       - ./data/nginx/letsencrypt:/etc/letsencrypt:rw
       - ./data/nginx/certbot:/var/www/certbot:rw
-      - /etc/ssl/certs:/etc/ssl/certs:ro
 
     tmpfs:
       - /tmp
