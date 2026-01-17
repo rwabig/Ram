@@ -6,7 +6,10 @@
   vars:
     domain_name: "ide.ucclab.io"
     admin_email: "admin@ucclab.io"
-    code_server_password: "{{ vault_code_server_password }}"
+
+    # 🔐 Comes from ansible-vault encrypt_string --name vscode_password
+    code_server_password: "{{ vscode_password }}"
+
     project_directory: "/opt/vscode-server"
     timezone: "UTC"
     letsencrypt_environment: "production"
@@ -146,7 +149,6 @@
           loop:
             - /var/lib/docker
             - /var/lib/containerd
-
       when:
         - docker_allow_data_wipe | bool
         - docker_service.stat.exists
@@ -166,6 +168,20 @@
         enabled: yes
       when:
         - docker_binary.stat.exists
+        - not ansible_check_mode
+
+    - name: Add user to docker group
+      user:
+        name: "{{ ansible_facts.user_id }}"
+        groups: docker
+        append: yes
+      register: docker_group_change
+
+    - name: Notify docker group membership change
+      debug:
+        msg: "⚠️ Docker group membership updated. Log out and back in for docker CLI access."
+      when:
+        - docker_group_change.changed
         - not ansible_check_mode
 
     # ------------------------------------------------------------
