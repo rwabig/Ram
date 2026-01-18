@@ -34,14 +34,6 @@ services:
       retries: 3
       start_period: 40s
 
-    deploy:
-      resources:
-        limits:
-          cpus: "2.0"
-          memory: "2g"
-        reservations:
-          memory: "512m"
-
     networks: [vscode-net]
 
   nginx:
@@ -80,14 +72,6 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: "512m"
-        reservations:
-          memory: "128m"
 
     networks: [vscode-net]
 
