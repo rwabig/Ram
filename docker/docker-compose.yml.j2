@@ -1,15 +1,15 @@
 services:
   code-server:
-    image: codercom/code-server:4.26.1@sha256:2d5f2a4cbe5b3df1c6e3fa7a50df9d3fd09bb57dfb24b00b18c96d0b21f03c42
+    image: "{{ code_server_image | default('codercom/code-server:4.26.1') }}"
     container_name: code-server
     restart: unless-stopped
 
     user: "1000:1000"
     read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    stop_grace_period: 30s
 
     environment:
       TZ: UTC
@@ -34,21 +34,27 @@ services:
       retries: 3
       start_period: 40s
 
-    networks:
-      - vscode-net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: "2g"
+        reservations:
+          memory: "512m"
+
+    networks: [vscode-net]
 
   nginx:
-    # ✅ Use tag without SHA256 for now
-    image: nginx:1.25.4-alpine
+    image: "{{ nginx_image | default('nginx:1.25.4-alpine') }}"
     container_name: nginx-proxy
     restart: unless-stopped
 
     user: "101:101"
     read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    stop_grace_period: 15s
 
     ports:
       - "80:80"
@@ -63,6 +69,7 @@ services:
 
     tmpfs:
       - /tmp
+      - /var/run
 
     depends_on:
       code-server:
@@ -74,32 +81,36 @@ services:
       timeout: 5s
       retries: 3
 
-    networks:
-      - vscode-net
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "512m"
+        reservations:
+          memory: "128m"
+
+    networks: [vscode-net]
 
   certbot:
-    # ✅ Use latest tag without SHA256
-    image: certbot/certbot:latest
+    image: "{{ certbot_image | default('certbot/certbot:v2.9.0') }}"
     container_name: certbot
     restart: "no"
 
     read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
 
     volumes:
       - ./data/nginx/letsencrypt:/etc/letsencrypt:rw
       - ./data/nginx/certbot:/var/www/certbot:rw
+      - /etc/ssl/certs:/etc/ssl/certs:ro
 
     tmpfs:
       - /tmp
 
     entrypoint: certbot
-
-    networks:
-      - vscode-net
+    networks: [vscode-net]
 
 networks:
   vscode-net:
