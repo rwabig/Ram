@@ -9,7 +9,7 @@ EMAIL="${EMAIL:-admin@ucclab.io}"
 BASE="${BASE:-/opt/vscode-server}"
 ENVIRONMENT="${LETSENCRYPT_ENV:-production}"   # staging | production
 
-COMPOSE="docker compose -f $BASE/docker-compose.yml"
+COMPOSE="docker compose"
 LIVE_DIR="$BASE/data/nginx/letsencrypt/live/$DOMAIN"
 
 # ============================================================
@@ -21,7 +21,7 @@ command -v docker >/dev/null || { echo "❌ Docker not installed"; exit 1; }
 # ============================================================
 # EXIT IF CERT EXISTS
 # ============================================================
-if [[ -d "$LIVE_DIR" ]]; then
+if [[ -f "$LIVE_DIR/fullchain.pem" ]]; then
   echo "✅ Certificate already exists for $DOMAIN — skipping bootstrap"
   exit 0
 fi
@@ -35,22 +35,30 @@ if [[ "$ENVIRONMENT" == "staging" ]]; then
   STAGING_FLAG="--staging"
 else
   echo "⚠️  PRODUCTION: Let's Encrypt rate limits apply"
+  echo "   - Certificates per domain: 50/week"
+  echo "   - Duplicate certificates: 5/week"
+  echo "   - Failed validations: 5/hour"
 fi
 
 # ============================================================
-# START NGINX
+# ENSURE CERTBOT DIRECTORIES EXIST
 # ============================================================
-echo "🚀 Ensuring nginx is running..."
+echo "📁 Creating required directories..."
+mkdir -p "$BASE/data/nginx/letsencrypt" "$BASE/data/nginx/certbot"
+
+# ============================================================
+# START NGINX (HTTP ONLY)
+# ============================================================
+echo "🚀 Starting nginx for ACME challenge..."
+cd "$BASE"
 $COMPOSE up -d nginx
 
 # ============================================================
 # WAIT FOR NGINX TO BIND PORT 80
 # ============================================================
-echo "⏳ Waiting for nginx to accept connections..."
-sleep 10  # Give nginx more time to start
-
+echo "⏳ Waiting for nginx to bind port 80..."
 for i in {1..30}; do
-  if curl -fsS http://127.0.0.1 >/dev/null 2>&1 || \
+  if $COMPOSE ps nginx | grep -q "Up" && \
      curl -fsS http://localhost >/dev/null 2>&1; then
     echo "✅ nginx is ready"
     break
@@ -58,9 +66,8 @@ for i in {1..30}; do
   sleep 2
   echo "Still waiting for nginx... ($i/30)"
   if [[ "$i" == "30" ]]; then
-    echo "❌ nginx did not become ready — checking status..."
-    docker compose ps
-    docker compose logs nginx --tail=20
+    echo "❌ nginx did not become ready — aborting"
+    $COMPOSE logs nginx --tail=20
     exit 1
   fi
 done
@@ -69,27 +76,46 @@ done
 # REQUEST CERTIFICATE
 # ============================================================
 echo "🔐 Requesting TLS certificate for $DOMAIN..."
-$COMPOSE run --rm certbot certonly \
+if $COMPOSE run --rm certbot certonly \
   --webroot \
   --webroot-path /var/www/certbot \
   --email "$EMAIL" \
   --agree-tos \
   --no-eff-email \
   $STAGING_FLAG \
-  -d "$DOMAIN"
+  -d "$DOMAIN"; then
+  echo "✅ Certificate issued successfully"
+else
+  echo "❌ Certificate issuance failed"
+  echo "⚠️  Check domain DNS settings and ensure port 80 is accessible"
+  exit 1
+fi
 
 # ============================================================
 # VERIFY CERTIFICATE
 # ============================================================
 if [[ ! -f "$LIVE_DIR/fullchain.pem" ]]; then
-  echo "❌ Certificate issuance failed — file not found"
+  echo "❌ Certificate file not found at $LIVE_DIR/fullchain.pem"
   exit 1
 fi
 
 # ============================================================
-# RELOAD NGINX
+# RESTART NGINX WITH SSL
 # ============================================================
-echo "🔄 Reloading nginx..."
+echo "🔄 Restarting nginx with SSL configuration..."
 $COMPOSE restart nginx
+
+# ============================================================
+# VERIFY HTTPS
+# ============================================================
+echo "🔍 Verifying HTTPS is working..."
+sleep 5
+if curl -kfsS https://localhost >/dev/null 2>&1 || \
+   curl -fsS https://localhost >/dev/null 2>&1; then
+  echo "✅ HTTPS is working correctly"
+else
+  echo "⚠️  HTTPS verification failed (but certificate was issued)"
+  echo "   Nginx might need additional configuration"
+fi
 
 echo "🎉 TLS bootstrap complete for $DOMAIN"

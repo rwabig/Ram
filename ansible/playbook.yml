@@ -330,25 +330,26 @@
       args:
         chdir: "{{ project_directory }}"
       register: compose_result
-      changed_when: "'Started' in compose_result.stdout or 'Recreated' in compose_result.stdout"
 
-    - name: Wait for nginx to be ready before certificate bootstrap
-      wait_for:
-        port: 80
-        host: "{{ ansible_default_ipv4.address }}"
-        timeout: 30
-      when: compose_result.changed
+    - name: Check if SSL certificate already exists
+      stat:
+        path: "{{ project_directory }}/data/nginx/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+      register: ssl_cert_exists
 
     - name: Bootstrap TLS certificates
       command: "{{ project_directory }}/scripts/init-letsencrypt.sh"
       args:
-        creates: "{{ project_directory }}/data/nginx/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+        chdir: "{{ project_directory }}"
+      when: not ssl_cert_exists.stat.exists
+      register: certbot_result
+      changed_when: certbot_result.rc == 0
 
     - name: Wait for HTTPS to be reachable
       wait_for:
         host: "{{ domain_name }}"
         port: 443
         timeout: 60
+      when: not ssl_cert_exists.stat.exists
 
     # ------------------------------------------------------------
     # OUTPUT
