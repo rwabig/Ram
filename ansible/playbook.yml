@@ -4,20 +4,27 @@
   become: true
 
   vars:
-    domain_name: "ide.ucclab.io"
-    admin_email: "admin@ucclab.io"
+    # ============================================================
+    # USER CONFIGURATION - CHANGE THESE FOR EACH DEPLOYMENT
+    # ============================================================
+    domain_name: "{{ deployment_domain | default('ide.example.com') }}"
+    admin_email: "{{ deployment_email | default('admin@example.com') }}"
+
+    # ============================================================
+    # INFRASTRUCTURE CONFIGURATION
+    # ============================================================
     project_directory: "/opt/vscode-server"
     timezone: "UTC"
-    letsencrypt_environment: "production"
+    letsencrypt_environment: "{{ letsencrypt_env | default('production') }}"
     backup_directory: "/var/backups/vscode-server"
 
-    # 🔒 SAFETY CONTROLS — NEVER DESTROYS DATA BY DEFAULT
+    # 🔒 SAFETY CONTROLS
     docker_allow_data_wipe: false
     docker_wipe_confirm: ""
 
   pre_tasks:
     # ------------------------------------------------------------
-    # PASSWORD HANDLING (SIMPLE & SECURE)
+    # PASSWORD HANDLING
     # ------------------------------------------------------------
     - name: Set password from extra-vars or prompt
       set_fact:
@@ -27,18 +34,28 @@
         - not ansible_check_mode
       no_log: true
 
-    - name: Validate password (check mode safe)
+    - name: Validate password
       assert:
         that:
           - code_server_password is defined or ansible_check_mode
         fail_msg: |
           Password required. Provide via:
-          1. Interactive: Run without --check
-          2. Command line: --extra-vars 'code_server_password=YourPass'
-          3. Environment: export code_server_password=YourPass
+          1. Interactive
+          2. --extra-vars 'code_server_password=YourPass'
+          3. export code_server_password=YourPass
+
+    - name: Validate domain and email
+      assert:
+        that:
+          - domain_name != 'ide.example.com'
+          - admin_email != 'admin@example.com'
+          - "'@' in admin_email"
+        fail_msg: |
+          Domain and email must be configured!
+          --extra-vars 'deployment_domain=your.domain.com deployment_email=admin@yourdomain.com'
 
     # ------------------------------------------------------------
-    # SAFETY & PLATFORM ASSERTIONS
+    # PLATFORM SAFETY
     # ------------------------------------------------------------
     - name: Assert supported OS
       assert:
@@ -81,18 +98,24 @@
         name: "{{ timezone }}"
 
     # ------------------------------------------------------------
-    # DOCKER — PHASE 1: Remove only conflicting Ubuntu packages
+    # DOCKER — PHASE 1: Remove only conflicting packages (SAFE)
     # ------------------------------------------------------------
-    - name: Remove conflicting Docker packages (SAFE)
+    - name: Check for conflicting docker packages
+      shell: dpkg -l | grep -E '^ii\s+(docker|docker-engine|docker.io)\s' || true
+      register: docker_conflicts
+      changed_when: false
+
+    - name: Remove conflicting Docker packages
       apt:
         name:
           - docker
           - docker-engine
           - docker.io
         state: absent
+      when: docker_conflicts.stdout != ""
 
     # ------------------------------------------------------------
-    # DOCKER — PHASE 2: Repo + install (clean, idempotent)
+    # DOCKER — PHASE 2: Repo + install
     # ------------------------------------------------------------
     - name: Remove legacy Docker repo/key conflicts
       file:
@@ -137,7 +160,7 @@
         state: present
 
     # ------------------------------------------------------------
-    # DOCKER — PHASE 3: OPTIONAL DESTRUCTIVE WIPE (EXPLICIT ONLY)
+    # DOCKER — PHASE 3: OPTIONAL DESTRUCTIVE WIPE
     # ------------------------------------------------------------
     - name: Check if Docker service exists
       stat:
@@ -171,21 +194,14 @@
         - docker_service.stat.exists
 
     # ------------------------------------------------------------
-    # DOCKER — PHASE 4: Enable runtime (check-mode safe)
+    # DOCKER — PHASE 4: Enable runtime
     # ------------------------------------------------------------
-    - name: Check if docker binary exists
-      stat:
-        path: /usr/bin/docker
-      register: docker_binary
-
     - name: Enable Docker service
       systemd:
         name: docker
         state: started
         enabled: yes
-      when:
-        - docker_binary.stat.exists
-        - not ansible_check_mode
+      when: not ansible_check_mode
 
     - name: Add user to docker group
       user:
@@ -228,7 +244,7 @@
         policy: deny
 
     # ------------------------------------------------------------
-    # DIRECTORIES (base)
+    # DIRECTORIES
     # ------------------------------------------------------------
     - name: Create project directories
       file:
@@ -253,7 +269,7 @@
         - "{{ backup_directory }}"
 
     # ------------------------------------------------------------
-    # DIRECTORIES (container UID/GID hardening)
+    # DIRECTORY OWNERSHIP
     # ------------------------------------------------------------
     - name: Set correct ownership for container volumes
       file:
@@ -288,13 +304,13 @@
     # CERTBOT BOOTSTRAP SCRIPT
     # ------------------------------------------------------------
     - name: Install Let's Encrypt bootstrap script
-      copy:
-        src: ../scripts/init-letsencrypt.sh
+      template:
+        src: ../scripts/init-letsencrypt.sh.j2
         dest: "{{ project_directory }}/scripts/init-letsencrypt.sh"
         mode: "0755"
 
     # ------------------------------------------------------------
-    # BACKUP SCRIPT
+    # BACKUP
     # ------------------------------------------------------------
     - name: Install backup script
       copy:
@@ -310,17 +326,20 @@
         job: "{{ project_directory }}/scripts/backup.sh"
 
     # ------------------------------------------------------------
-    # CERTBOT RENEWAL
+    # CERTIFICATE RENEWAL
     # ------------------------------------------------------------
+    - name: Install certificate renewal script
+      template:
+        src: ../scripts/renew-certs.sh.j2
+        dest: "{{ project_directory }}/scripts/renew-certs.sh"
+        mode: "0755"
+
     - name: Install certificate renewal cron job
       cron:
         name: "Renew Let's Encrypt certificates"
         minute: "0"
         hour: "3"
-        job: >
-          cd {{ project_directory }} &&
-          docker compose run --rm certbot renew --quiet &&
-          docker compose exec nginx nginx -s reload
+        job: "{{ project_directory }}/scripts/renew-certs.sh"
 
     # ------------------------------------------------------------
     # START SERVICES
@@ -331,6 +350,9 @@
         chdir: "{{ project_directory }}"
       register: compose_result
 
+    # ------------------------------------------------------------
+    # CERTIFICATE BOOTSTRAP
+    # ------------------------------------------------------------
     - name: Check if SSL certificate already exists
       stat:
         path: "{{ project_directory }}/data/nginx/letsencrypt/live/{{ domain_name }}/fullchain.pem"
@@ -344,12 +366,24 @@
       register: certbot_result
       changed_when: certbot_result.rc == 0
 
-    - name: Wait for HTTPS to be reachable
-      wait_for:
-        host: "{{ domain_name }}"
-        port: 443
-        timeout: 60
-      when: not ssl_cert_exists.stat.exists
+    # ------------------------------------------------------------
+    # FINAL VERIFICATION
+    # ------------------------------------------------------------
+    - name: Wait for services to stabilize
+      pause:
+        seconds: 10
+
+    - name: Verify nginx is running
+      command: docker compose ps nginx
+      args:
+        chdir: "{{ project_directory }}"
+      changed_when: false
+
+    - name: Verify code-server is running
+      command: docker compose ps code-server
+      args:
+        chdir: "{{ project_directory }}"
+      changed_when: false
 
     # ------------------------------------------------------------
     # OUTPUT
@@ -357,8 +391,23 @@
     - name: Deployment summary
       debug:
         msg:
+          - "============================================================"
           - "✅ VS Code Server deployed successfully"
-          - "🌐 URL: https://{{ domain_name }}"
+          - "============================================================"
+          - "🌐 Domain: {{ domain_name }}"
+          - "📧 Admin email: {{ admin_email }}"
+          - "🔐 Environment: {{ letsencrypt_environment }}"
           - "📁 Project path: {{ project_directory }}"
           - "🔧 Status: docker compose -f {{ project_directory }}/docker-compose.yml ps"
           - "📜 Logs: docker compose -f {{ project_directory }}/docker-compose.yml logs -f"
+          - ""
+          - "📋 Access Information:"
+          - "   HTTPS URL: https://{{ domain_name }}/"
+          - "   Password: [The password you entered during deployment]"
+          - ""
+          - "🔧 Management Commands:"
+          - "   Start/Stop: cd {{ project_directory }} && docker compose [up/down]"
+          - "   View logs: cd {{ project_directory }} && docker compose logs -f"
+          - "   Backup: {{ project_directory }}/scripts/backup.sh"
+          - "   Renew certs: {{ project_directory }}/scripts/renew-certs.sh"
+          - "============================================================"
