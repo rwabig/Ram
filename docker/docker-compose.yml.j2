@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   code-server:
     image: "{{ code_server_image | default('codercom/code-server:4.108.1') }}"
@@ -21,8 +19,6 @@ services:
     volumes:
       - ./data/code-server/projects:/home/coder/project:rw
       - ./data/code-server/config:/home/coder/.config:rw
-      - ./data/code-server/cache:/home/coder/.cache:rw
-      - ./data/code-server/share:/home/coder/.local/share:rw
 
     tmpfs:
       - /tmp
@@ -32,7 +28,7 @@ services:
       - "8080"
 
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -45,7 +41,6 @@ services:
     container_name: nginx-proxy
     restart: unless-stopped
 
-    user: "101:101"
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -62,7 +57,6 @@ services:
       - ./data/nginx/letsencrypt:/etc/letsencrypt:ro
       - ./data/nginx/cache:/var/cache/nginx:rw
       - ./data/nginx/run:/var/run:rw
-      - ./data/nginx/log:/var/log/nginx:rw
 
     tmpfs:
       - /tmp
@@ -72,10 +66,10 @@ services:
         condition: service_healthy
 
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 80 || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+      test: ["CMD-SHELL", "wget -q --spider http://localhost || exit 1"]
+      interval: 20s
+      timeout: 3s
+      retries: 5
 
     networks: [vscode-net]
 
@@ -92,7 +86,6 @@ services:
     volumes:
       - ./data/nginx/letsencrypt:/etc/letsencrypt:rw
       - ./data/nginx/certbot:/var/www/certbot:rw
-      - ./data/nginx/log:/var/log/letsencrypt:rw
       - /etc/ssl/certs:/etc/ssl/certs:ro
 
     tmpfs:

@@ -1,92 +1,53 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ============================================================
-# CONFIGURATION (Auto-generated from Ansible)
-# ============================================================
-DOMAIN="{{ domain_name }}"
-EMAIL="{{ admin_email }}"
-BASE="{{ project_directory }}"
-ENVIRONMENT="{{ letsencrypt_environment }}"   # staging | production
+DOMAIN="${DOMAIN:-{{ deployment_domain }}}"
+EMAIL="${EMAIL:-{{ deployment_email }}}"
+BASE="/opt/vscode-server"
+ENV="${LETSENCRYPT_ENV:-production}"
 
-LIVE_DIR="$BASE/data/nginx/letsencrypt/live/$DOMAIN"
+CERT_DIR="$BASE/data/nginx/letsencrypt/live/$DOMAIN"
 
-# ============================================================
-# PREFLIGHT
-# ============================================================
-command -v docker >/dev/null || { echo "❌ Docker not installed"; exit 1; }
-[[ -f "$BASE/docker-compose.yml" ]] || { echo "❌ docker-compose.yml not found"; exit 1; }
-
-# ============================================================
-# EXIT IF CERT EXISTS
-# ============================================================
-if [[ -f "$LIVE_DIR/fullchain.pem" ]]; then
-  echo "✅ Certificate already exists for $DOMAIN — skipping bootstrap"
+if [[ -d "$CERT_DIR" ]]; then
+  echo "✅ Certificate already exists for $DOMAIN"
   exit 0
 fi
 
-# ============================================================
-# START NGINX (HTTP ONLY)
-# ============================================================
+echo "⚠️  ${ENV^^}: Let's Encrypt rate limits apply"
 echo "🚀 Starting nginx for ACME challenge..."
-cd "$BASE"
-docker compose up -d nginx
 
-# ============================================================
-# WAIT FOR PORT 80
-# ============================================================
+docker compose -f "$BASE/docker-compose.yml" up -d nginx
+
 echo "⏳ Waiting for nginx to bind port 80..."
-for i in {1..30}; do
-  if timeout 2 bash -c "cat < /dev/null > /dev/tcp/127.0.0.1/80" 2>/dev/null; then
-    echo "✅ nginx is listening on port 80"
+for i in {1..20}; do
+  if curl -fs http://localhost >/dev/null 2>&1; then
     break
   fi
   sleep 2
-  if [[ "$i" == "30" ]]; then
-    echo "❌ nginx did not become ready"
-    docker compose logs nginx --tail=50
-    exit 1
-  fi
 done
 
-# ============================================================
-# REQUEST CERTIFICATE
-# ============================================================
-echo "🔐 Requesting TLS certificate for $DOMAIN..."
-
-CERTBOT_OPTS=""
-if [[ "$ENVIRONMENT" == "staging" ]]; then
-  echo "⚠️  Using Let's Encrypt STAGING environment"
-  CERTBOT_OPTS="--staging"
-else
-  echo "⚠️  PRODUCTION: Let's Encrypt rate limits apply"
+if ! curl -fs http://localhost >/dev/null 2>&1; then
+  echo "❌ nginx did not become ready"
+  docker compose -f "$BASE/docker-compose.yml" logs nginx
+  exit 1
 fi
 
-docker compose run --rm certbot certonly \
+STAGING_FLAG=""
+[[ "$ENV" == "staging" ]] && STAGING_FLAG="--staging"
+
+echo "🔐 Requesting certificate for $DOMAIN..."
+
+docker compose -f "$BASE/docker-compose.yml" run --rm certbot certonly \
   --webroot \
   --webroot-path /var/www/certbot \
   --email "$EMAIL" \
   --agree-tos \
   --no-eff-email \
-  $CERTBOT_OPTS \
+  $STAGING_FLAG \
   -d "$DOMAIN"
 
-# ============================================================
-# VERIFY
-# ============================================================
-if [[ ! -f "$LIVE_DIR/fullchain.pem" ]]; then
-  echo "❌ Certificate file not found after issuance"
-  exit 1
-fi
+echo "🔄 Reloading nginx with HTTPS..."
 
-echo "📄 Certificate created:"
-ls -la "$LIVE_DIR"
+docker compose -f "$BASE/docker-compose.yml" exec nginx nginx -s reload
 
-# ============================================================
-# RESTART NGINX WITH TLS
-# ============================================================
-echo "🔄 Restarting nginx with TLS..."
-docker compose restart nginx
-
-echo "🎉 TLS bootstrap complete for $DOMAIN"
-echo "🌐 Access at: https://$DOMAIN"
+echo "✅ TLS bootstrap complete"
