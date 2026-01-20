@@ -56,6 +56,7 @@ services:
       - ./data/nginx/conf.d:/etc/nginx/conf.d:ro
       - ./data/nginx/certbot:/var/www/certbot:ro
       - ./data/nginx/letsencrypt:/etc/letsencrypt:ro
+      - ./data/nginx/letsencrypt/logs:/var/log/letsencrypt:rw
       - ./data/nginx/cache:/var/cache/nginx:rw
       - ./data/nginx/run:/var/run:rw
 
@@ -87,6 +88,7 @@ services:
     volumes:
       - ./data/nginx/letsencrypt:/etc/letsencrypt:rw
       - ./data/nginx/certbot:/var/www/certbot:rw
+      - ./data/nginx/letsencrypt/logs:/var/log/letsencrypt:rw
       - /etc/ssl/certs:/etc/ssl/certs:ro
 
     tmpfs:
