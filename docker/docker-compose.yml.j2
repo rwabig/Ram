@@ -41,9 +41,16 @@ services:
     container_name: nginx-proxy
     restart: unless-stopped
 
-    user: "101:101"
+    # MUST run as root to read TLS private keys
+    user: "0:0"
+
     read_only: true
     cap_drop: [ALL]
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
     security_opt: [no-new-privileges:true]
     pids_limit: 128
     stop_grace_period: 15s
