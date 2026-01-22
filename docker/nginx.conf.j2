@@ -25,12 +25,18 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/{{ domain_name }}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    # ---- AUTH GATE (no websocket upgrade here) ----
+    # ---- AUTH GATE ----
     location = /auth {
         internal;
         auth_basic "Restricted Access";
         auth_basic_user_file /etc/nginx/auth/htpasswd;
         return 204;
+    }
+
+    # ---- LOGOUT ENDPOINT ----
+    location = /logout {
+        add_header WWW-Authenticate 'Basic realm="Restricted Access"';
+        return 401;
     }
 
     # ---- MAIN APP ----
