@@ -82,11 +82,11 @@ services:
         condition: service_healthy
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -k -f https://localhost || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost/.healthz || exit 1"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
-      start_period: 40s
+      start_period: 30s
 
     networks: [vscode-net]
 

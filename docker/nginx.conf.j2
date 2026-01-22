@@ -1,6 +1,6 @@
 server {
     listen 80;
-    server_name {{ deployment_domain }};
+    server_name {{ domain_name }};
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -12,27 +12,33 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    server_name {{ deployment_domain }};
+    listen 443 ssl;
+    http2 on;
+    server_name {{ domain_name }};
 
-    ssl_certificate /etc/letsencrypt/live/{{ deployment_domain }}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/{{ deployment_domain }}/privkey.pem;
-
+    ssl_certificate /etc/letsencrypt/live/{{ domain_name }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ domain_name }}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
 
-    auth_basic "Restricted VS Code Access";
-    auth_basic_user_file /etc/nginx/auth/htpasswd;
+    # Healthcheck endpoint (no auth)
+    location = /.healthz {
+        return 200 "ok\n";
+        add_header Content-Type text/plain;
+    }
 
+    # Auth-protected app
     location / {
+        auth_basic "Restricted Access";
+        auth_basic_user_file /etc/nginx/auth/htpasswd;
+
         proxy_pass http://code-server:8080;
+        proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
-
-        proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "Upgrade";
+        proxy_set_header Connection "upgrade";
     }
 }
