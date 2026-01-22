@@ -13,7 +13,6 @@
     # ============================================================
     # MULTI-USER AUTH CONFIGURATION
     # ============================================================
-    vscode_users: "{{ vscode_users | default({'admin': None}) }}"
     htpasswd_path: "/opt/vscode-server/data/nginx/auth/htpasswd"
 
     # ============================================================
@@ -32,20 +31,21 @@
     # ------------------------------------------------------------
     # MULTI-USER PASSWORD HANDLING
     # ------------------------------------------------------------
-    - name: Prompt for users if not provided
+    - name: Prompt for admin password if users not provided
+      vars:
+        admin_password: "{{ lookup('password', prompt='Enter password for admin user:', confirm=True) }}"
       set_fact:
-        vscode_users: >-
-          {{
-            dict([('admin', lookup('password', prompt='Enter password for admin user:', confirm=True))])
-          }}
+        vscode_users:
+          admin: "{{ admin_password }}"
       when:
-        - vscode_users is not defined or vscode_users | length == 0
+        - vscode_users is not defined
         - not ansible_check_mode
       no_log: true
 
     - name: Validate users defined
       assert:
         that:
+          - vscode_users is defined
           - vscode_users | length > 0
         fail_msg: |
           You must define at least one user:
