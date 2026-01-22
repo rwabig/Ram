@@ -21,6 +21,9 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
 
+    auth_basic "Restricted VS Code Access";
+    auth_basic_user_file /etc/nginx/auth/htpasswd;
+
     location / {
         proxy_pass http://code-server:8080;
         proxy_set_header Host $host;

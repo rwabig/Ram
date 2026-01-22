@@ -11,17 +11,20 @@ services:
     pids_limit: 256
     stop_grace_period: 30s
 
+    command: >
+      code-server
+      --bind-addr 0.0.0.0:8080
+      --auth none
+      --disable-telemetry
+      /home/coder/project
+
     environment:
       TZ: UTC
-      PASSWORD_FILE: /run/secrets/code_server_password
       DEFAULT_WORKSPACE: /home/coder/project
 
     volumes:
       - ./data/code-server/projects:/home/coder/project:rw
       - ./data/code-server/config:/home/coder/.config:rw
-
-    secrets:
-      - code_server_password
 
     tmpfs:
       - /tmp
@@ -31,7 +34,7 @@ services:
       - "8080"
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -44,7 +47,6 @@ services:
     container_name: nginx-proxy
     restart: unless-stopped
 
-    # MUST run as root to read TLS private keys
     user: "0:0"
 
     read_only: true
@@ -64,6 +66,7 @@ services:
 
     volumes:
       - ./data/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./data/nginx/auth:/etc/nginx/auth:ro
       - ./data/nginx/certbot:/var/www/certbot:ro
       - ./data/nginx/letsencrypt:/etc/letsencrypt:ro
       - ./data/nginx/letsencrypt/logs:/var/log/certbot:rw
@@ -108,10 +111,6 @@ services:
 
     entrypoint: certbot
     networks: [vscode-net]
-
-secrets:
-  code_server_password:
-    file: ./secrets/code_server_password
 
 networks:
   vscode-net:

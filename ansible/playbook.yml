@@ -11,6 +11,12 @@
     admin_email: "{{ deployment_email | default('admin@example.com') }}"
 
     # ============================================================
+    # MULTI-USER AUTH CONFIGURATION
+    # ============================================================
+    vscode_users: "{{ vscode_users | default({'admin': None}) }}"
+    htpasswd_path: "/opt/vscode-server/data/nginx/auth/htpasswd"
+
+    # ============================================================
     # INFRASTRUCTURE CONFIGURATION
     # ============================================================
     project_directory: "/opt/vscode-server"
@@ -24,27 +30,27 @@
 
   pre_tasks:
     # ------------------------------------------------------------
-    # PASSWORD HANDLING (SECRET-BASED)
+    # MULTI-USER PASSWORD HANDLING
     # ------------------------------------------------------------
-    - name: Prompt for code-server password (hidden)
-      pause:
-        prompt: "Enter VS Code login password:"
-        echo: no
-      register: code_server_password_input
-      when: not ansible_check_mode
+    - name: Prompt for users if not provided
+      set_fact:
+        vscode_users: >-
+          {{
+            dict([('admin', lookup('password', prompt='Enter password for admin user:', confirm=True))])
+          }}
+      when:
+        - vscode_users is not defined or vscode_users | length == 0
+        - not ansible_check_mode
       no_log: true
 
-    - name: Validate password provided
+    - name: Validate users defined
       assert:
         that:
-          - code_server_password_input.user_input | length > 0 or ansible_check_mode
+          - vscode_users | length > 0
         fail_msg: |
-          Password required. Please enter a non-empty password.
-      no_log: true
+          You must define at least one user:
+          --extra-vars 'vscode_users={"alice":"pass1","bob":"pass2"}'
 
-    # ------------------------------------------------------------
-    # PLATFORM SAFETY
-    # ------------------------------------------------------------
     - name: Validate domain and email
       assert:
         that:
@@ -55,6 +61,9 @@
           Domain and email must be configured!
           --extra-vars 'deployment_domain=your.domain.com deployment_email=admin@yourdomain.com'
 
+    # ------------------------------------------------------------
+    # PLATFORM SAFETY
+    # ------------------------------------------------------------
     - name: Assert supported OS
       assert:
         that:
@@ -89,6 +98,7 @@
           - lsb-release
           - ufw
           - cron
+          - apache2-utils
         state: present
 
     - name: Set timezone
@@ -264,8 +274,8 @@
         - "{{ project_directory }}/data/nginx/cache"
         - "{{ project_directory }}/data/nginx/run"
         - "{{ project_directory }}/data/nginx/letsencrypt/logs"
+        - "{{ project_directory }}/data/nginx/auth"
         - "{{ project_directory }}/scripts"
-        - "{{ project_directory }}/secrets"
         - "{{ backup_directory }}"
 
     # ------------------------------------------------------------
@@ -283,7 +293,7 @@
         - { path: "{{ project_directory }}/data/nginx/cache",           owner: "101",  group: "101",  mode: "0755" }
         - { path: "{{ project_directory }}/data/nginx/run",             owner: "101",  group: "101",  mode: "0755" }
         - { path: "{{ project_directory }}/data/nginx/letsencrypt/logs", owner: "0", group: "0", mode: "0755" }
-        - { path: "{{ project_directory }}/secrets", owner: "0", group: "0", mode: "0700" }
+        - { path: "{{ project_directory }}/data/nginx/auth",             owner: "0", group: "0", mode: "0750" }
 
     - name: Create nginx runtime directories
       file:
@@ -301,17 +311,21 @@
         - /opt/vscode-server/data/nginx/run
 
     # ------------------------------------------------------------
-    # SECRET MATERIALIZATION (ROOT-ONLY)
+    # MULTI-USER AUTH FILE
     # ------------------------------------------------------------
-    - name: Write code-server password secret
-      copy:
-        dest: "{{ project_directory }}/secrets/code_server_password"
-        content: "{{ code_server_password_input.user_input }}"
+    - name: Create htpasswd file
+      file:
+        path: "{{ htpasswd_path }}"
+        state: touch
         owner: root
         group: root
-        mode: "0600"
+        mode: "0640"
+
+    - name: Populate htpasswd users
+      command: >
+        htpasswd -bB {{ htpasswd_path }} {{ item.key }} {{ item.value }}
+      loop: "{{ vscode_users | dict2items }}"
       no_log: true
-      when: not ansible_check_mode
 
     # ------------------------------------------------------------
     # CONFIG FILES
@@ -443,7 +457,7 @@
           - ""
           - "📋 Access Information:"
           - "   HTTPS URL: https://{{ domain_name }}/"
-          - "   Password: [Stored securely in {{ project_directory }}/secrets/code_server_password]"
+          - "   Auth: Nginx multi-user basic auth"
           - ""
           - "🔧 Management Commands:"
           - "   Start/Stop: cd {{ project_directory }} && docker compose [up/down]"
