@@ -11,6 +11,11 @@ server {
     }
 }
 
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
 server {
     listen 443 ssl;
     http2 on;
@@ -19,7 +24,6 @@ server {
     ssl_certificate /etc/letsencrypt/live/{{ domain_name }}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/{{ domain_name }}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers off;
 
     # Healthcheck endpoint (no auth)
     location = /.healthz {
@@ -27,18 +31,21 @@ server {
         add_header Content-Type text/plain;
     }
 
-    # Auth-protected app
     location / {
         auth_basic "Restricted Access";
         auth_basic_user_file /etc/nginx/auth/htpasswd;
 
         proxy_pass http://code-server:8080;
         proxy_http_version 1.1;
+
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
+
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
+
+        proxy_buffering off;
     }
 }
