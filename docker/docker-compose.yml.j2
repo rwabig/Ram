@@ -67,8 +67,11 @@ services:
     tmpfs:
       - /tmp
 
+    expose:
+      - "9091"
+
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:9091/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3

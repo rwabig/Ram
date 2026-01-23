@@ -7,9 +7,6 @@ default_redirection_url: https://{{ domain_name }}/
 
 server:
   address: unix:///run/authelia/authelia.sock
-  buffers:
-    read: 4096
-    write: 4096
 
 log:
   level: info
@@ -33,17 +30,16 @@ authentication_backend:
     password:
       algorithm: argon2id
       iterations: 3
+      memory: 65536
+      parallelism: 4
       key_length: 32
       salt_length: 16
-      parallelism: 4
-      memory: 64MB
 
 ###############################################################################
 # ACCESS CONTROL
 ###############################################################################
 access_control:
   default_policy: deny
-
   rules:
     - domain: {{ domain_name }}
       policy: one_factor
@@ -53,20 +49,15 @@ access_control:
 ###############################################################################
 session:
   name: authelia_session
-  same_site: lax
   expiration: 12h
   inactivity: 30m
   remember_me_duration: 7d
-
   cookies:
     - domain: {{ domain_name }}
       authelia_url: https://{{ domain_name }}/authelia
 
-  secret:
-    file: /secrets/session_secret
-
 ###############################################################################
-# REGULATION (ANTI-BRUTEFORCE)
+# REGULATION
 ###############################################################################
 regulation:
   max_retries: 5
@@ -74,33 +65,25 @@ regulation:
   ban_time: 15m
 
 ###############################################################################
-# STORAGE (LOCAL SQLITE)
+# STORAGE
 ###############################################################################
 storage:
-  encryption_key:
-    file: /secrets/storage_secret
+  encryption_key: "{{ lookup('file', authelia_storage_secret) }}"
   local:
     path: /data/authelia.sqlite3
 
 ###############################################################################
-# NOTIFIER (DISABLED — SAFE DEFAULT)
+# SECRETS
+###############################################################################
+jwt_secret: "{{ lookup('file', authelia_jwt_secret) }}"
+
+session:
+  secret: "{{ lookup('file', authelia_session_secret) }}"
+
+###############################################################################
+# NOTIFIER
 ###############################################################################
 notifier:
   disable_startup_check: true
   filesystem:
     filename: /data/notification.txt
-
-###############################################################################
-# TELEMETRY
-###############################################################################
-telemetry:
-  metrics:
-    enabled: false
-
-###############################################################################
-# IDENTITY VALIDATION
-###############################################################################
-identity_validation:
-  reset_password:
-    jwt_secret:
-      file: /secrets/jwt_secret
