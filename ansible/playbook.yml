@@ -360,20 +360,16 @@
       no_log: true
 
     # ------------------------------------------------------------
-    # AUTHELIA PASSWORD HASHING (ARGON2ID)
+    # AUTHELIA PASSWORD HASHING (PURE JINJA — ARGON2ID)
     # ------------------------------------------------------------
-    - name: Generate Argon2id password hashes
-      command: >
-        mkpasswd --method=argon2id {{ item.value }}
-      loop: "{{ vscode_users | dict2items }}"
-      register: authelia_hashes
-      no_log: true
-      changed_when: false
-
-    - name: Build Authelia users dictionary
+    - name: Generate Argon2id password hashes (pure Jinja)
       set_fact:
-        authelia_users_hashed: "{{ authelia_users_hashed | default({}) | combine({item.item.key: item.stdout}) }}"
-      loop: "{{ authelia_hashes.results }}"
+        authelia_users_hashed: >-
+          {{
+            authelia_users_hashed | default({}) |
+            combine({ item.key: (item.value | password_hash('argon2id')) })
+          }}
+      loop: "{{ vscode_users | dict2items }}"
       no_log: true
 
     # ------------------------------------------------------------
