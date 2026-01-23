@@ -15,7 +15,7 @@
     # ============================================================
     authelia_dir: "/opt/vscode-server/data/authelia"
     authelia_config: "/opt/vscode-server/data/authelia/configuration.yml"
-    authelia_users: "/opt/vscode-server/data/authelia/users_database.yml"
+    authelia_users_file: "/opt/vscode-server/data/authelia/users_database.yml"
     authelia_jwt_secret: "/opt/vscode-server/data/authelia/secrets/jwt_secret"
     authelia_session_secret: "/opt/vscode-server/data/authelia/secrets/session_secret"
     authelia_storage_secret: "/opt/vscode-server/data/authelia/secrets/storage_secret"
@@ -284,7 +284,6 @@
         - "{{ project_directory }}/data/authelia/config"
         - "{{ project_directory }}/data/authelia/storage"
         - "{{ project_directory }}/data/authelia/secrets"
-        - "{{ project_directory }}/data/authelia/tmp"
 
     # ------------------------------------------------------------
     # DIRECTORY OWNERSHIP (HARDENED)
@@ -306,7 +305,6 @@
         - { path: "{{ project_directory }}/data/authelia/config",        owner: "1000", group: "1000", mode: "0750" }
         - { path: "{{ project_directory }}/data/authelia/storage",       owner: "1000", group: "1000", mode: "0750" }
         - { path: "{{ project_directory }}/data/authelia/secrets",       owner: "1000", group: "1000", mode: "0700" }
-        - { path: "{{ project_directory }}/data/authelia/tmp",           owner: "1000", group: "1000", mode: "0700" }
 
     - name: Create nginx runtime directories
       file:
@@ -339,29 +337,22 @@
       no_log: true
 
     # ------------------------------------------------------------
-    # AUTHELIA PASSWORD HASHING (OFFICIAL AUTHELIA CLI — ARGON2ID)
+    # AUTHELIA PASSWORD HASHING (USING AUTHELIA CONTAINER — ZERO HOST DEPENDENCIES)
     # ------------------------------------------------------------
     - name: Generate password hashes using Authelia container
       command: >
-        docker run --rm
-        authelia/authelia:4.39.15
-        authelia crypto hash generate argon2 --password "{{ item.value }}"
-      register: authelia_hash_output
+        docker run --rm authelia/authelia:4.39
+        authelia crypto hash generate argon2
+        --password "{{ item.value }}"
       loop: "{{ vscode_users | dict2items }}"
+      register: authelia_hashes
       no_log: true
       changed_when: false
 
-    - name: Assemble Authelia users database (strip CLI prefix)
+    - name: Assemble Authelia users dictionary
       set_fact:
-        authelia_users_hashed: >-
-          {{
-            authelia_users_hashed | default({}) |
-            combine({
-              item.item.key:
-                (item.stdout | regex_replace('^Digest:\\s*', '') | trim)
-            })
-          }}
-      loop: "{{ authelia_hash_output.results }}"
+        authelia_users_hashed: "{{ authelia_users_hashed | default({}) | combine({ item.item.key: item.stdout }) }}"
+      loop: "{{ authelia_hashes.results }}"
       no_log: true
 
     # ------------------------------------------------------------
@@ -370,7 +361,7 @@
     - name: Deploy Authelia users database
       template:
         src: ../authelia/users_database.yml.j2
-        dest: "{{ authelia_users }}"
+        dest: "{{ authelia_users_file }}"
         mode: "0600"
       vars:
         authelia_users: "{{ authelia_users_hashed }}"
