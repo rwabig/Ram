@@ -68,17 +68,17 @@ regulation:
 # STORAGE
 ###############################################################################
 storage:
-  encryption_key: "{{ lookup('file', authelia_storage_secret) }}"
+  encryption_key_file: /secrets/storage_secret
   local:
     path: /data/authelia.sqlite3
 
 ###############################################################################
 # SECRETS
 ###############################################################################
-jwt_secret: "{{ lookup('file', authelia_jwt_secret) }}"
+jwt_secret_file: /secrets/jwt_secret
 
 session:
-  secret: "{{ lookup('file', authelia_session_secret) }}"
+  secret_file: /secrets/session_secret
 
 ###############################################################################
 # NOTIFIER
