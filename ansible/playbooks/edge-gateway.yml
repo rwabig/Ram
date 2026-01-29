@@ -4,7 +4,7 @@
   become: true
 
   roles:
-    - role: edge_gateway
+    - edge_gateway
       vars:
         edge_gateway_email: rwabig1@gmail.com
         edge_gateway_domains:
