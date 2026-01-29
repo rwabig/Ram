@@ -7,6 +7,6 @@
     - edge_gateway
       vars:
         "edge_gateway_email: rwabig1@gmail.com"
-        edge_gateway_domains:
-          - "vscode.unifypesacard.shop"
-          - "cgs.unifypesacard.shop"
+        "edge_gateway_domains:
+          - 'vscode.unifypesacard.shop'
+          - 'cgs.unifypesacard.shop'"
