@@ -1,0 +1,19 @@
+docker_repo_url: "https://download.docker.com/linux/ubuntu"
+docker_gpg_url: "https://download.docker.com/linux/ubuntu/gpg"
+
+docker_keyring_path: "/etc/apt/keyrings/docker.asc"
+docker_repo_filename: "docker"
+
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+
+docker_old_packages:
+  - docker
+  - docker-engine
+  - docker.io
+  - containerd
+  - runc
