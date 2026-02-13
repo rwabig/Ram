@@ -49,25 +49,33 @@
 # ADD DOCKER REPOSITORY
 # ===============================
 
+- name: Determine normalized architecture
+  set_fact:
+    docker_arch: >-
+      {{
+        'amd64' if ansible_facts['architecture'] == 'x86_64'
+        else 'arm64' if ansible_facts['architecture'] in ['aarch64', 'arm64']
+        else ansible_facts['architecture']
+      }}
+
 - name: Download Docker GPG key
   get_url:
     url: "{{ docker_gpg_url }}"
     dest: "{{ docker_keyring_path }}"
     mode: "0644"
+    force: true
 
 - name: Add Docker APT repository
   apt_repository:
-    repo: >
-      deb {{ ansible_facts['architecture'] | replace('x86_64','amd64') }}
-      signed-by={{ docker_keyring_path }}]
-      {{ docker_repo_url }}
-      {{ ansible_facts['distribution_release'] }} stable
+    repo: "deb [arch={{ docker_arch }} signed-by={{ docker_keyring_path }}] {{ docker_repo_url }} {{ ansible_facts['distribution_release'] }} stable"
     filename: "{{ docker_repo_filename }}"
     state: present
+    update_cache: false
 
-- name: Update apt cache after repo addition
+- name: Refresh apt cache after Docker repo addition
   apt:
     update_cache: yes
+    cache_valid_time: 3600
 
 # ===============================
 # INSTALL DOCKER
