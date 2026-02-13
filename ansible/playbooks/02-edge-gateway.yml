@@ -13,4 +13,4 @@
             upstream: "vscode:8080"
 
           - domain: "cgs.unifypesacard.shop"
-            upstream: "app:80"
+            upstream: "cgs:80"

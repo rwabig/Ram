@@ -110,111 +110,13 @@ sudo apt update
 
 This removes conflicting definitions.
 
-🧠 Now — We Fix Your Docker Role Properly
-
-We will replace the shell-based repo addition with the correct Ansible modules.
-
-Replace your entire roles/docker/tasks/main.yml with this:
-
-✅ NEW Production-Safe Docker Role
----
-# Production-safe Docker installation for Ubuntu 24.04+
-
-- name: Install required packages
-  apt:
-    name:
-      - ca-certificates
-      - curl
-      - gnupg
-    update_cache: yes
-
-- name: Ensure keyrings directory exists
-  file:
-    path: /etc/apt/keyrings
-    state: directory
-    mode: '0755'
-
-- name: Download Docker GPG key
-  get_url:
-    url: https://download.docker.com/linux/ubuntu/gpg
-    dest: /etc/apt/keyrings/docker.asc
-    mode: '0644'
-
-- name: Add Docker repository
-  apt_repository:
-    repo: >
-      deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc]
-      https://download.docker.com/linux/ubuntu
-      {{ ansible_distribution_release }} stable
-    filename: docker
-    state: present
-
-- name: Update apt cache
-  apt:
-    update_cache: yes
-
-- name: Install Docker packages
-  apt:
-    name:
-      - docker-ce
-      - docker-ce-cli
-      - containerd.io
-      - docker-buildx-plugin
-      - docker-compose-plugin
-    state: present
-
-- name: Enable and start Docker
-  systemd:
-    name: docker
-    enabled: yes
-    state: started
-
 🚀 Then Re-run
 ansible-playbook playbooks/01-docker.yml
 
-Why This Fix Works
-
-Your old version:
-
-Used shell
-
-Created .gpg
-
-But Ubuntu previously had .asc
-
-APT saw two different Signed-By keys
-
-New version:
-
-Uses .asc consistently
-
-Uses apt_repository
-
-Fully idempotent
-
-No duplication
-
-Clean noble-compatible
-
-⚠️ Important
-
-If Docker was previously partially installed, also check:
-
-docker --version
+...
+ubuntu@ip-172-26-6-161:~/Ram/ansible$ grep -R "download.docker.com" /etc/apt/
+/etc/apt/sources.list.d/docker.list:deb amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable
+ubuntu@ip-172-26-6-161:~/Ram/ansible$ sudo rm -f /etc/apt/sources.list.d/docker.list
+ubuntu@ip-172-26-6-161:~/Ram/ansible$ sudo apt update
 
 
-If it already exists and works, Ansible will simply enforce consistency.
-
-🧠 Engineering Note (Opinion)
-
-Never use shell for apt repositories in production Ansible.
-
-Always use:
-
-get_url
-
-apt_repository
-
-apt
-
-Shell-based repo management is fragile on Ubuntu ≥22.04.
