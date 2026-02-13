@@ -58,10 +58,10 @@
 - name: Add Docker APT repository
   apt_repository:
     repo: >
-      deb [arch={{ ansible_architecture | replace('x86_64','amd64') }}
+      deb {{ ansible_facts['architecture'] | replace('x86_64','amd64') }}
       signed-by={{ docker_keyring_path }}]
       {{ docker_repo_url }}
-      {{ ansible_distribution_release }} stable
+      {{ ansible_facts['distribution_release'] }} stable
     filename: "{{ docker_repo_filename }}"
     state: present
 
