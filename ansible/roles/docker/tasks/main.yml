@@ -1,6 +1,17 @@
 ---
 # Install Docker from official repo (production safe)
 
+- name: Remove old Docker packages
+  apt:
+    name:
+      - docker
+      - docker-engine
+      - docker.io
+      - containerd
+      - runc
+    state: absent
+  ignore_errors: yes
+
 - name: Install required packages
   apt:
     name:

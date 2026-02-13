@@ -6,11 +6,11 @@
   roles:
     - role: edge_gateway
       vars:
-        edge_gateway_email: "admin@example.com"
+        edge_gateway_email: "rwabig1@gmail.com"
 
         edge_gateway_apps:
-          - domain: "vscode.example.com"
+          - domain: "vscode.unifypesacard.shop"
             upstream: "vscode:8080"
 
-          - domain: "app.example.com"
+          - domain: "cgs.unifypesacard.shop"
             upstream: "app:80"
