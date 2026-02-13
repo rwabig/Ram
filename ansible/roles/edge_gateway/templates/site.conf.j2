@@ -1,0 +1,13 @@
+server {
+    listen 443 ssl;
+    server_name {{ item.domain }};
+
+    ssl_certificate /etc/letsencrypt/live/{{ item.domain }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ item.domain }}/privkey.pem;
+
+    location / {
+        proxy_pass http://{{ item.upstream }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
