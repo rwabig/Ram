@@ -1,0 +1,6 @@
+vscode_base_path: /opt/vscode
+vscode_container_name: vscode
+vscode_domain: vscode.unifypesacard.shop
+vscode_port: 8080
+edge_gateway_base_path: /opt/edge-gateway
+edge_gateway_network: edge-net

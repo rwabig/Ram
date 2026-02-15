@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  vscode:
+    image: codercom/code-server:latest
+    container_name: {{ vscode_container_name }}
+    restart: unless-stopped
+
+    command: >
+      code-server
+      --bind-addr 0.0.0.0:{{ vscode_port }}
+      --auth none
+      /home/coder/project
+
+    volumes:
+      - ./data:/home/coder/project
+
+    networks:
+      - {{ edge_gateway_network }}
+
+networks:
+  {{ edge_gateway_network }}:
+    external: true

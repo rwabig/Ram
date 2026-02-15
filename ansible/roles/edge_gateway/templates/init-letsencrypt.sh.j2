@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -e
+
+DOMAINS="{{ edge_gateway_apps_dynamic | map(attribute='domain') | join(' ') }}"
+EMAIL="{{ edge_gateway_email }}"
+
+if [ -z "$EMAIL" ]; then
+  echo "ERROR: edge_gateway_email is not set"
+  exit 1
+fi
+
+for DOMAIN in $DOMAINS; do
+  if [ ! -f "/opt/edge-gateway/certbot/conf/live/${DOMAIN}/fullchain.pem" ]; then
+    echo "Requesting certificate for $DOMAIN"
+
+    docker compose run --rm certbot certonly \
+      --webroot \
+      --webroot-path /var/www/certbot \
+      --email "$EMAIL" \
+      --agree-tos \
+      --no-eff-email \
+      -d "$DOMAIN"
+  else
+    echo "Certificate exists for $DOMAIN — skipping"
+  fi
+done
+
+docker exec edge-nginx nginx -s reload || true

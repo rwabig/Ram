@@ -6,24 +6,47 @@ services:
     image: nginx:1.25-alpine
     container_name: edge-nginx
     restart: unless-stopped
+
     volumes:
       - ./nginx:/etc/nginx/conf.d
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
+
     ports:
       - "80:80"
       - "443:443"
+
     networks:
       - {{ edge_gateway_network }}
+
+    # ------------------------------------------------------------
+    # HEALTH CHECK (Phase 2.3.5)
+    # ------------------------------------------------------------
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/.healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 
   certbot:
     image: certbot/certbot
     container_name: edge-certbot
+    restart: unless-stopped
+
     volumes:
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
+
     networks:
       - {{ edge_gateway_network }}
+
+    # ------------------------------------------------------------
+    # AUTO RENEW LOOP (Phase 2.4)
+    # ------------------------------------------------------------
+    entrypoint: /bin/sh
+    command: -c "while :; do sleep 12h; certbot renew --webroot -w /var/www/certbot; done"
 
 networks:
   {{ edge_gateway_network }}:

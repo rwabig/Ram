@@ -1,2 +1,10 @@
 ---
-# (Reserved for future reload handlers)
+- name: Validate nginx config
+  command: docker exec edge-nginx nginx -t
+  changed_when: false
+  failed_when: false
+
+- name: Reload edge nginx
+  command: docker exec edge-nginx nginx -s reload
+  changed_when: false
+  failed_when: false

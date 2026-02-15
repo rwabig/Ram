@@ -1,0 +1,36 @@
+---
+# ============================================================
+# VS CODE — DIRECTORIES
+# ============================================================
+
+- name: Create vscode directories
+  file:
+    path: "{{ vscode_base_path }}/data"
+    state: directory
+    mode: "0755"
+
+# ============================================================
+# DOCKER COMPOSE
+# ============================================================
+
+- name: Render vscode compose
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ vscode_base_path }}/docker-compose.yml"
+
+- name: Start vscode stack
+  command: docker compose up -d
+  args:
+    chdir: "{{ vscode_base_path }}"
+
+# ============================================================
+# EDGE REGISTRATION (AUTO DISCOVERY)
+# ============================================================
+
+- name: Register vscode with edge gateway
+  copy:
+    dest: "{{ edge_gateway_base_path }}/apps/vscode.yml"
+    content: |
+      domain: "{{ vscode_domain }}"
+      upstream: "{{ vscode_container_name }}:{{ vscode_port }}"
+  notify: Reload edge nginx
