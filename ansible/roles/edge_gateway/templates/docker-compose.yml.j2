@@ -23,22 +23,19 @@ services:
     # HEALTH CHECK (Phase 2.3.5)
     # ------------------------------------------------------------
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/.healthz || exit 1"]
+      test: ["CMD-SHELL", "nginx -t || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 10s
 
-
   certbot:
     image: certbot/certbot
     container_name: edge-certbot
-    restart: unless-stopped
-
+    entrypoint: certbot
     volumes:
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
-
     networks:
       - {{ edge_gateway_network }}
 
