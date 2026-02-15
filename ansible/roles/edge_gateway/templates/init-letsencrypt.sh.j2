@@ -13,7 +13,7 @@ for DOMAIN in $DOMAINS; do
   if [ ! -f "/opt/edge-gateway/certbot/conf/live/${DOMAIN}/fullchain.pem" ]; then
     echo "Requesting certificate for $DOMAIN"
 
-    docker compose run --rm certbot certonly \
+    docker compose run --rm --entrypoint certbot certbot certonly \
       --webroot \
       --webroot-path /var/www/certbot \
       --email "$EMAIL" \
