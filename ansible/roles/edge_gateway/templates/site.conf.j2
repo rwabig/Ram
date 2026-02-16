@@ -2,12 +2,15 @@ server {
     listen 80;
     server_name {{ item.domain }};
 
+    # ------------------------------------------------------------
+    # LET'S ENCRYPT ACME CHALLENGE (MANDATORY)
+    # ------------------------------------------------------------
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
     location / {
-        resolver 127.0.0.11 valid=10s;
-
-        set $upstream "{{ item.upstream }}";
-
-        proxy_pass http://$upstream;
+        proxy_pass http://{{ item.upstream }};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
