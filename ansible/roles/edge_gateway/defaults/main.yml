@@ -3,8 +3,8 @@ edge_gateway_base_path: "/opt/edge-gateway"
 edge_gateway_email: ""
 edge_gateway_network: "edge-net"
 
-# Backward compatibility (manual apps)
+# manual fallback (kept for compatibility)
 edge_gateway_apps: []
 
-# Phase 2.3 — service label discovery
+# ELITE auto-discovery label
 edge_gateway_docker_label: "edge.enable=true"

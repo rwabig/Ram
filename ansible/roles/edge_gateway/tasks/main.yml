@@ -43,7 +43,7 @@
     name: "{{ edge_gateway_network }}"
 
 # ============================================================
-# LOAD REGISTERED APPS (AUTO DISCOVERY)
+# LOAD REGISTERED APPS (FILE DISCOVERY)
 # ============================================================
 
 - name: Discover registered edge apps
@@ -53,11 +53,15 @@
     file_type: file
   register: discovered_apps
 
-- name: Build dynamic app list
+- name: Initialize dynamic apps list
+  set_fact:
+    edge_gateway_apps_dynamic: []
+
+- name: Build dynamic app list from files
   set_fact:
     edge_gateway_apps_dynamic: >-
       {{
-        edge_gateway_apps_dynamic | default([])
+        edge_gateway_apps_dynamic
         + [ lookup('file', item.path) | from_yaml ]
       }}
   loop: "{{ discovered_apps.files }}"
@@ -70,11 +74,38 @@
 - name: Fallback to static apps if none discovered
   set_fact:
     edge_gateway_apps_dynamic: "{{ edge_gateway_apps | default([]) }}"
-  when: edge_gateway_apps_dynamic is not defined
+  when: edge_gateway_apps_dynamic | length == 0
+
+# ============================================================
+# PHASE 2.5 — DOCKER LABEL AUTO DISCOVERY
+# ============================================================
+
+- name: Discover running docker containers
+  community.docker.docker_host_info:
+    containers: true
+  register: docker_info
+
+- name: Build edge apps from docker labels
+  set_fact:
+    edge_gateway_apps_dynamic: >-
+      {{
+        edge_gateway_apps_dynamic
+        +
+        [
+          {
+            "domain": item.Config.Labels["edge.domain"],
+            "upstream": item.Name[1:] ~ ":" ~ item.Config.Labels["edge.port"]
+          }
+        ]
+      }}
+  loop: "{{ docker_info.containers }}"
+  when:
+    - item.Config.Labels is defined
+    - item.Config.Labels["edge.enable"] is defined
+    - item.Config.Labels["edge.enable"] == "true"
 
 # ============================================================
 # CLEAN OLD SITE CONFIGS (VERY IMPORTANT)
-# prevents stale upstream crashes
 # ============================================================
 
 - name: Discover existing nginx site configs
@@ -90,36 +121,6 @@
     state: absent
   loop: "{{ existing_nginx_configs.files }}"
   when: item.path | basename != "nginx.conf"
-
-# ============================================================
-# PHASE 2.5 — DOCKER LABEL AUTO DISCOVERY
-# ============================================================
-
-- name: Discover running docker containers
-  community.docker.docker_host_info:
-    containers: true
-  register: docker_info
-
-- name: Build edge apps from docker labels
-  set_fact:
-    edge_gateway_apps_dynamic: >-
-      {{
-        (edge_gateway_apps_dynamic | default([]))
-        +
-        [
-          {
-            "domain":
-              item.Config.Labels["edge.domain"],
-            "upstream":
-              item.Name[1:] ~ ":" ~ item.Config.Labels["edge.port"]
-          }
-        ]
-      }}
-  loop: "{{ docker_info.containers }}"
-  when:
-    - item.Config.Labels is defined
-    - item.Config.Labels["edge.enable"] is defined
-    - item.Config.Labels["edge.enable"] == "true"
 
 # ============================================================
 # CONFIGURATION FILES
