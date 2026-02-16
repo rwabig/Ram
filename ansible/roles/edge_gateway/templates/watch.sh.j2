@@ -1,0 +1,51 @@
+#!/bin/sh
+set -e
+
+echo "[EDGE WATCHER] started"
+
+generate_configs() {
+
+  echo "[EDGE WATCHER] rebuilding configs"
+
+  rm -f /sites/*.conf
+
+  docker ps --format '{{ "{{.ID}}" }}' | while read id; do
+
+    enable=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.enable\" }}" }}' $id 2>/dev/null)
+
+    [ "$enable" = "true" ] || continue
+
+    domain=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.domain\" }}" }}' $id)
+    port=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.port\" }}" }}' $id)
+    name=$(docker inspect -f '{{ "{{.Name}}" }}' $id | sed 's/\///')
+
+cat > /sites/$domain.conf <<EOF
+server {
+    listen 80;
+    server_name $domain;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        proxy_pass http://$name:$port;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+}
+EOF
+
+  done
+
+  docker exec edge-nginx nginx -t && docker exec edge-nginx nginx -s reload
+}
+
+# Initial generation
+generate_configs
+
+# Live watch loop
+docker events | while read line; do
+  echo "[EDGE WATCHER] change detected"
+  generate_configs
+done

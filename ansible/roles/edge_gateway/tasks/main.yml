@@ -15,6 +15,12 @@
     state: directory
     mode: "0755"
 
+- name: Create nginx sites directory
+  file:
+    path: "{{ edge_gateway_base_path }}/nginx/sites"
+    state: directory
+    mode: "0755"
+
 - name: Create certbot directories
   file:
     path: "{{ edge_gateway_base_path }}/certbot/{{ item }}"
@@ -24,8 +30,14 @@
     - conf
     - www
 
+- name: Create edge scripts directory
+  file:
+    path: "{{ edge_gateway_base_path }}/scripts"
+    state: directory
+    mode: "0755"
+
 # ------------------------------------------------------------
-# APP AUTO-REGISTRATION DIRECTORY (Phase 2.1)
+# APP AUTO-REGISTRATION DIRECTORY
 # ------------------------------------------------------------
 
 - name: Create edge app registry directory
@@ -104,13 +116,25 @@
     - item.Config.Labels["edge.enable"] is defined
     - item.Config.Labels["edge.enable"] == "true"
 
+# ------------------------------------------------------------
+# REMOVE DUPLICATES (ELITE SAFETY)
+# ------------------------------------------------------------
+
+- name: Remove duplicate edge apps
+  set_fact:
+    edge_gateway_apps_dynamic: >-
+      {{
+        edge_gateway_apps_dynamic
+        | unique(attribute='domain')
+      }}
+
 # ============================================================
-# CLEAN OLD SITE CONFIGS (VERY IMPORTANT)
+# CLEAN OLD SITE CONFIGS
 # ============================================================
 
 - name: Discover existing nginx site configs
   find:
-    paths: "{{ edge_gateway_base_path }}/nginx"
+    paths: "{{ edge_gateway_base_path }}/nginx/sites"
     patterns: "*.conf"
     file_type: file
   register: existing_nginx_configs
@@ -120,7 +144,6 @@
     path: "{{ item.path }}"
     state: absent
   loop: "{{ existing_nginx_configs.files }}"
-  when: item.path | basename != "nginx.conf"
 
 # ============================================================
 # CONFIGURATION FILES
@@ -140,7 +163,7 @@
 - name: Render site configs
   template:
     src: site.conf.j2
-    dest: "{{ edge_gateway_base_path }}/nginx/{{ item.domain }}.conf"
+    dest: "{{ edge_gateway_base_path }}/nginx/sites/{{ item.domain }}.conf"
   loop: "{{ edge_gateway_apps_dynamic }}"
   notify: Reload edge nginx
 
@@ -172,10 +195,10 @@
   delay: 3
   until: edge_health.stdout == "healthy"
   changed_when: false
-  failed_when: false
+  failed_when: edge_health.stdout != "healthy"
 
 # ============================================================
-# AUTO TLS ORCHESTRATION (Phase 2.4.5)
+# AUTO TLS ORCHESTRATION
 # ============================================================
 
 - name: Install TLS bootstrap script
@@ -190,10 +213,19 @@
     dest: "{{ edge_gateway_base_path }}/renew-certs.sh"
     mode: "0755"
 
+- name: Check if certificate exists
+  stat:
+    path: "{{ edge_gateway_base_path }}/certbot/conf/live/{{ edge_gateway_apps_dynamic[0].domain }}/fullchain.pem"
+  register: edge_tls_exists
+  when: edge_gateway_apps_dynamic | length > 0
+
 - name: Bootstrap TLS certificates
   command: "{{ edge_gateway_base_path }}/init-letsencrypt.sh"
   args:
     chdir: "{{ edge_gateway_base_path }}"
+  when:
+    - edge_gateway_apps_dynamic | length > 0
+    - not edge_tls_exists.stat.exists
 
 - name: Install certificate renewal cron
   cron:
@@ -201,3 +233,13 @@
     minute: "0"
     hour: "3"
     job: "{{ edge_gateway_base_path }}/renew-certs.sh"
+
+# ============================================================
+# PHASE 2.6 — WATCHER INSTALL
+# ============================================================
+
+- name: Install edge watcher script
+  template:
+    src: watch.sh.j2
+    dest: "{{ edge_gateway_base_path }}/scripts/watch.sh"
+    mode: "0755"

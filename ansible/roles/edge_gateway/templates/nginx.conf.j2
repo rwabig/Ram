@@ -1,20 +1,66 @@
-server {
-    listen 80;
-    server_name _;
+# ============================================================
+# EDGE GATEWAY — GLOBAL NGINX CONFIG
+# ============================================================
 
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
+worker_processes auto;
 
-    # ------------------------------------------------------------
-    # EDGE HEALTH CHECK ENDPOINT
-    # ------------------------------------------------------------
-    location = /.healthz {
-        return 200 "ok\n";
-        add_header Content-Type text/plain;
-    }
+events {
+    worker_connections 1024;
+}
 
-    location / {
-        return 301 https://$host$request_uri;
+http {
+
+    # --------------------------------------------------------
+    # BASIC SETTINGS
+    # --------------------------------------------------------
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+
+    client_max_body_size 100M;
+
+    # --------------------------------------------------------
+    # LOGGING
+    # --------------------------------------------------------
+    access_log /var/log/nginx/access.log;
+    error_log  /var/log/nginx/error.log warn;
+
+    # --------------------------------------------------------
+    # DOCKER DNS RESOLVER (VERY IMPORTANT)
+    # --------------------------------------------------------
+    resolver 127.0.0.11 valid=30s ipv6=off;
+
+    # --------------------------------------------------------
+    # INCLUDE AUTO-GENERATED SITE CONFIGS
+    # (PHASE 2 AUTO REGISTRATION)
+    # --------------------------------------------------------
+    include /etc/nginx/conf.d/sites/*.conf;
+
+    # --------------------------------------------------------
+    # DEFAULT SERVER (HTTP → HTTPS + HEALTH)
+    # --------------------------------------------------------
+    server {
+        listen 80;
+        server_name _;
+
+        location /.well-known/acme-challenge/ {
+            root /var/www/certbot;
+        }
+
+        # ----------------------------------------------------
+        # EDGE HEALTH CHECK ENDPOINT
+        # ----------------------------------------------------
+        location = /.healthz {
+            return 200 "ok\n";
+            add_header Content-Type text/plain;
+        }
+
+        location / {
+            return 301 https://$host$request_uri;
+        }
     }
 }

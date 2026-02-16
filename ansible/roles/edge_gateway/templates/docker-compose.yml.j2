@@ -42,6 +42,23 @@ services:
     networks:
       - {{ edge_gateway_network }}
 
+  edge-watcher:
+    image: alpine:latest
+    container_name: edge-watcher
+    restart: unless-stopped
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./nginx/sites:/sites
+      - ./scripts:/scripts
+
+    entrypoint: /bin/sh
+    command: /scripts/watch.sh
+
+    networks:
+      - {{ edge_gateway_network }}
+
 networks:
   {{ edge_gateway_network }}:
     external: true
+
