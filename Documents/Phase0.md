@@ -246,3 +246,7 @@ Phase 1: Clean Ram repo + Docker role + Edge Gateway role
 
 Just reply:
 “Proceed with Phase 1”
+................
+
+docker rm -f edge-watcher
+
