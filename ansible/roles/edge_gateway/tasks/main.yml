@@ -179,6 +179,11 @@
   args:
     chdir: "{{ edge_gateway_base_path }}"
 
+- name: Remove default nginx config inside container
+  command: docker exec edge-nginx rm -f /etc/nginx/conf.d/default.conf
+  changed_when: false
+  failed_when: false
+
 # ============================================================
 # HEALTH CHECK (EDGE ELITE SAFETY)
 # ============================================================
