@@ -145,6 +145,9 @@ ansible-playbook playbooks/02-edge-gateway.yml -vv
 ls /opt/edge-gateway/nginx/sites
 sudo docker exec edge-nginx ls /etc/nginx/conf.d
 curl -H "Host: vscode.unifypesacard.shop" http://localhost
+sudo docker exec edge-nginx nginx -T | grep listen
+sudo docker exec edge-nginx nginx -T | grep 443
+
 
 
 ............................
