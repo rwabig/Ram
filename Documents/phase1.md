@@ -140,3 +140,35 @@ That means gateway is stable.
 sudo docker rm -f edge-watcher
 sudo docker ps
 sudo docker exec edge-nginx nginx -t
+sudo docker logs -f edge-watcher
+
+............................
+
+Labels belong to THE APPLICATION CONTAINER, not the edge.
+
+So:
+
+edge role = reads labels
+
+app role = defines labels
+
+✔ Example — VSCode Role (correct place)
+
+Inside your app role template:
+
+roles/vscode/templates/docker-compose.yml.j2
+
+
+Add:
+
+services:
+  vscode:
+    image: codercom/code-server:latest
+
+    labels:
+      edge.enable: "true"
+      edge.domain: "vscode.unifypesacard.shop"
+      edge.port: "8080"
+
+
+That’s all.
