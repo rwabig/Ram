@@ -54,7 +54,7 @@ services:
       - {{ edge_gateway_network }}
 
   edge-watcher:
-    image: alpine:latest
+    image: docker:cli
     container_name: edge-watcher
     restart: unless-stopped
 
