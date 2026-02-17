@@ -234,8 +234,8 @@
 # PHASE 2.6 — WATCHER INSTALL (PAUSED)
 # ============================================================
 
-#- name: Install edge watcher script
-#  template:
-#    src: watch.sh.j2
-#    dest: "{{ edge_gateway_base_path }}/scripts/watch.sh"
-#    mode: "0755"
+- name: Install edge watcher script
+  template:
+    src: watch.sh.j2
+    dest: "{{ edge_gateway_base_path }}/scripts/watch.sh"
+    mode: "0755"

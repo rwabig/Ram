@@ -1,20 +1,30 @@
 #!/bin/sh
 set -e
 
-echo "[EDGE WATCHER] started"
+echo "[EDGE WATCHER ELITE] started"
 
 SITES_DIR="/sites"
+TMP_DIR="/tmp/edge-sites"
+
+mkdir -p "$TMP_DIR"
+
+reload_nginx() {
+  if docker exec edge-nginx nginx -t >/dev/null 2>&1; then
+    docker exec edge-nginx nginx -s reload
+    echo "[EDGE WATCHER] nginx reloaded"
+  else
+    echo "[EDGE WATCHER] config invalid — reload skipped"
+  fi
+}
 
 generate_configs() {
 
   echo "[EDGE WATCHER] rebuilding configs"
 
-  # ----------------------------------------------------------
-  # SAFE CLEANUP (only generated files)
-  # ----------------------------------------------------------
-  rm -f ${SITES_DIR}/auto-*.conf
+  rm -rf "${TMP_DIR}"/*
+  mkdir -p "${TMP_DIR}"
 
-  docker ps --format '{{ "{{.ID}}" }}' | while read id; do
+  docker ps --format '{{ "{{.ID}}" }}' | sort | while read id; do
 
     enable=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.enable\" }}" }}' "$id" 2>/dev/null)
 
@@ -24,13 +34,10 @@ generate_configs() {
     port=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.port\" }}" }}' "$id")
     name=$(docker inspect -f '{{ "{{.Name}}" }}' "$id" | sed 's/\///')
 
-    # ------------------------------------------------------
-    # BASIC VALIDATION
-    # ------------------------------------------------------
     [ -z "$domain" ] && continue
     [ -z "$port" ] && continue
 
-cat > ${SITES_DIR}/auto-${domain}.conf <<EOF
+cat > ${TMP_DIR}/auto-${domain}.conf <<EOF
 server {
     listen 80;
     server_name $domain;
@@ -48,35 +55,32 @@ server {
 }
 EOF
 
-    echo "[EDGE WATCHER] added $domain -> $name:$port"
+    echo "[EDGE WATCHER] discovered $domain -> $name:$port"
 
   done
 
-  # ----------------------------------------------------------
-  # SAFE NGINX RELOAD
-  # ----------------------------------------------------------
-  if docker exec edge-nginx nginx -t >/dev/null 2>&1; then
-    docker exec edge-nginx nginx -s reload
-    echo "[EDGE WATCHER] nginx reloaded"
-  else
-    echo "[EDGE WATCHER] nginx config invalid — skipping reload"
-  fi
+  # ------------------------------------------------------
+  # ATOMIC SWAP
+  # ------------------------------------------------------
+  rm -f ${SITES_DIR}/auto-*.conf
+  mv ${TMP_DIR}/* ${SITES_DIR}/ 2>/dev/null || true
+
+  reload_nginx
 }
 
-# --------------------------------------------------------------
-# Initial generation
-# --------------------------------------------------------------
+# Initial build
 generate_configs
 
-# --------------------------------------------------------------
-# Live watch loop (FILTERED EVENTS ONLY)
-# --------------------------------------------------------------
+# ------------------------------------------------------
+# EVENT LOOP (DEBOUNCED)
+# ------------------------------------------------------
 docker events \
   --filter type=container \
   --filter event=start \
   --filter event=die \
-  --filter event=stop \
-| while read line; do
+  --filter event=stop |
+while read line; do
   echo "[EDGE WATCHER] change detected"
+  sleep 2
   generate_configs
 done
