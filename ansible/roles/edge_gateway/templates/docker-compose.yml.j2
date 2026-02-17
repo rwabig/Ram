@@ -68,6 +68,15 @@ services:
 
     networks:
       - {{ edge_gateway_network }}
+      
+
+  vscode:
+    image: codercom/code-server:latest
+
+    labels:
+      edge.enable: "true"
+      edge.domain: "vscode.unifypesacard.shop"
+      edge.port: "8080"
 
 networks:
   {{ edge_gateway_network }}:
