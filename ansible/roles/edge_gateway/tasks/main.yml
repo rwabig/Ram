@@ -137,7 +137,7 @@
 
 - name: Discover existing nginx site configs
   find:
-    paths: "{{ edge_gateway_base_path }}/nginx/conf.d"
+    paths: "{{ edge_gateway_base_path }}/nginx/sites"
     patterns: "*.conf"
     file_type: file
   register: existing_nginx_configs
@@ -166,7 +166,7 @@
 - name: Render site configs
   template:
     src: site.conf.j2
-    dest: "{{ edge_gateway_base_path }}/nginx/conf.d/{{ item.domain }}.conf"
+    dest: "{{ edge_gateway_base_path }}/nginx/sites/{{ item.domain }}.conf"
   loop: "{{ edge_gateway_apps_dynamic }}"
   notify: Reload edge nginx
 
