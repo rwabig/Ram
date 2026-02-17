@@ -15,6 +15,82 @@ services:
       # ------------------------------------------------------------
       # DYNAMIC SITES (AUTO GENERATED)
       # ------------------------------------------------------------
+      - ./nginx/sites:/etc/nginx/conf.d
+      # ------------------------------------------------------------
+      # TLS DATA
+      # ------------------------------------------------------------
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    networks:
+      - {{ edge_gateway_network }}
+
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  certbot:
+    image: certbot/certbot
+    container_name: edge-certbot
+
+    # SINGLE ENTRYPOINT (KEEPED)
+    entrypoint: /bin/sh
+    command: -c "while :; do sleep 12h; certbot renew --webroot -w /var/www/certbot; done"
+
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+
+    networks:
+      - {{ edge_gateway_network }}
+
+  edge-watcher:
+    image: docker:cli
+    container_name: edge-watcher
+    restart: unless-stopped
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./nginx/sites:/sites
+      - ./scripts:/scripts
+
+    entrypoint: /bin/sh
+    command: /scripts/watch.sh
+
+    networks:
+      - {{ edge_gateway_network }}
+      
+
+networks:
+  {{ edge_gateway_network }}:
+    external: true
+
+.....
+
+version: "3.9"
+
+services:
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: edge-nginx
+    restart: unless-stopped
+
+    volumes:
+      # ------------------------------------------------------------
+      # MAIN NGINX CONFIG (CORE FIX)
+      # ------------------------------------------------------------
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # ------------------------------------------------------------
+      # DYNAMIC SITES (AUTO GENERATED)
+      # ------------------------------------------------------------
       - ./nginx/sites:/etc/nginx/conf.d/sites
       # ------------------------------------------------------------
       # TLS DATA
