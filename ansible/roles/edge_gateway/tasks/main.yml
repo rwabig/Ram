@@ -55,7 +55,7 @@
     name: "{{ edge_gateway_network }}"
 
 # ============================================================
-# LOAD REGISTERED APPS (FILE DISCOVERY)
+# LOAD REGISTERED APPS (FILE DISCOVERY — FIXED)
 # ============================================================
 
 - name: Discover registered edge apps
@@ -69,14 +69,14 @@
   set_fact:
     edge_gateway_apps_dynamic: []
 
-- name: Load app definitions from files
+- name: Read app definition files
   slurp:
     src: "{{ item.path }}"
   loop: "{{ discovered_apps.files }}"
   register: slurped_apps
   when: discovered_apps.matched | int > 0
 
-- name: Build dynamic app list from slurped files
+- name: Build dynamic app list from files
   set_fact:
     edge_gateway_apps_dynamic: >-
       {{
@@ -99,29 +99,29 @@
 # PHASE 2.5 — DOCKER LABEL AUTO DISCOVERY
 # ============================================================
 
-- name: Discover running docker containers
-  community.docker.docker_host_info:
-    containers: true
-  register: docker_info
+#- name: Discover running docker containers
+#  community.docker.docker_host_info:
+#    containers: true
+#  register: docker_info
 
-- name: Build edge apps from docker labels
-  set_fact:
-    edge_gateway_apps_dynamic: >-
-      {{
-        edge_gateway_apps_dynamic
-        +
-        [
-          {
-            "domain": item.Config.Labels["edge.domain"],
-            "upstream": item.Name[1:] ~ ":" ~ item.Config.Labels["edge.port"]
-          }
-        ]
-      }}
-  loop: "{{ docker_info.containers }}"
-  when:
-    - item.Config.Labels is defined
-    - item.Config.Labels["edge.enable"] is defined
-    - item.Config.Labels["edge.enable"] == "true"
+#- name: Build edge apps from docker labels
+#  set_fact:
+#    edge_gateway_apps_dynamic: >-
+#      {{
+#        edge_gateway_apps_dynamic
+#        +
+#        [
+#          {
+#            "domain": item.Config.Labels["edge.domain"],
+#            "upstream": item.Name[1:] ~ ":" ~ item.Config.Labels["edge.port"]
+#          }
+#        ]
+#      }}
+#  loop: "{{ docker_info.containers }}"
+#  when:
+#    - item.Config.Labels is defined
+#    - item.Config.Labels["edge.enable"] is defined
+#    - item.Config.Labels["edge.enable"] == "true"
 
 # ------------------------------------------------------------
 # REMOVE DUPLICATES (ELITE SAFETY)
