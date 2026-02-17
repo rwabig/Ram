@@ -86,10 +86,6 @@
   loop: "{{ slurped_apps.results }}"
   when: discovered_apps.matched | int > 0
 
-- name: DEBUG slurped apps
-  debug:
-    var: slurped_apps
-
 # ------------------------------------------------------------
 # FALLBACK — backward compatibility
 # ------------------------------------------------------------
