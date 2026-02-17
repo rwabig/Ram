@@ -69,14 +69,21 @@
   set_fact:
     edge_gateway_apps_dynamic: []
 
-- name: Build dynamic app list from files
+- name: Load app definitions from files
+  slurp:
+    src: "{{ item.path }}"
+  loop: "{{ discovered_apps.files }}"
+  register: slurped_apps
+  when: discovered_apps.matched | int > 0
+
+- name: Build dynamic app list from slurped files
   set_fact:
     edge_gateway_apps_dynamic: >-
       {{
         edge_gateway_apps_dynamic
-        + [ lookup('file', item.path) | from_yaml ]
+        + [ (item.content | b64decode | from_yaml) ]
       }}
-  loop: "{{ discovered_apps.files }}"
+  loop: "{{ slurped_apps.results }}"
   when: discovered_apps.matched | int > 0
 
 # ------------------------------------------------------------

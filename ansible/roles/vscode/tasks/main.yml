@@ -34,3 +34,11 @@
       domain: "{{ vscode_domain }}"
       upstream: "{{ vscode_container_name }}:{{ vscode_port }}"
   notify: Reload edge nginx
+
+# ============================================================
+# keep disabled for now — future automation hook
+# ============================================================
+
+- name: Trigger edge rebuild
+  command: ansible-playbook playbooks/02-edge-gateway.yml
+  when: false
