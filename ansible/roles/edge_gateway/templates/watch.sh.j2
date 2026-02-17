@@ -3,23 +3,34 @@ set -e
 
 echo "[EDGE WATCHER] started"
 
+SITES_DIR="/sites"
+
 generate_configs() {
 
   echo "[EDGE WATCHER] rebuilding configs"
 
-  rm -f /sites/*.conf
+  # ----------------------------------------------------------
+  # SAFE CLEANUP (only generated files)
+  # ----------------------------------------------------------
+  rm -f ${SITES_DIR}/auto-*.conf
 
   docker ps --format '{{ "{{.ID}}" }}' | while read id; do
 
-    enable=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.enable\" }}" }}' $id 2>/dev/null)
+    enable=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.enable\" }}" }}' "$id" 2>/dev/null)
 
     [ "$enable" = "true" ] || continue
 
-    domain=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.domain\" }}" }}' $id)
-    port=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.port\" }}" }}' $id)
-    name=$(docker inspect -f '{{ "{{.Name}}" }}' $id | sed 's/\///')
+    domain=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.domain\" }}" }}' "$id")
+    port=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.port\" }}" }}' "$id")
+    name=$(docker inspect -f '{{ "{{.Name}}" }}' "$id" | sed 's/\///')
 
-cat > /sites/$domain.conf <<EOF
+    # ------------------------------------------------------
+    # BASIC VALIDATION
+    # ------------------------------------------------------
+    [ -z "$domain" ] && continue
+    [ -z "$port" ] && continue
+
+cat > ${SITES_DIR}/auto-${domain}.conf <<EOF
 server {
     listen 80;
     server_name $domain;
@@ -32,20 +43,40 @@ server {
         proxy_pass http://$name:$port;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
 }
 EOF
 
+    echo "[EDGE WATCHER] added $domain -> $name:$port"
+
   done
 
-  docker exec edge-nginx nginx -t && docker exec edge-nginx nginx -s reload
+  # ----------------------------------------------------------
+  # SAFE NGINX RELOAD
+  # ----------------------------------------------------------
+  if docker exec edge-nginx nginx -t >/dev/null 2>&1; then
+    docker exec edge-nginx nginx -s reload
+    echo "[EDGE WATCHER] nginx reloaded"
+  else
+    echo "[EDGE WATCHER] nginx config invalid — skipping reload"
+  fi
 }
 
+# --------------------------------------------------------------
 # Initial generation
+# --------------------------------------------------------------
 generate_configs
 
-# Live watch loop
-docker events | while read line; do
+# --------------------------------------------------------------
+# Live watch loop (FILTERED EVENTS ONLY)
+# --------------------------------------------------------------
+docker events \
+  --filter type=container \
+  --filter event=start \
+  --filter event=die \
+  --filter event=stop \
+| while read line; do
   echo "[EDGE WATCHER] change detected"
   generate_configs
 done

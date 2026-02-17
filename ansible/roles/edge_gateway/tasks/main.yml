@@ -9,15 +9,15 @@
     state: directory
     mode: "0755"
 
-- name: Create nginx config directory
+- name: Create nginx base directory
   file:
     path: "{{ edge_gateway_base_path }}/nginx"
     state: directory
     mode: "0755"
 
-- name: Create nginx sites directory
+- name: Create nginx conf.d directory
   file:
-    path: "{{ edge_gateway_base_path }}/nginx/sites"
+    path: "{{ edge_gateway_base_path }}/nginx/conf.d"
     state: directory
     mode: "0755"
 
@@ -122,11 +122,7 @@
 
 - name: Remove duplicate edge apps
   set_fact:
-    edge_gateway_apps_dynamic: >-
-      {{
-        edge_gateway_apps_dynamic
-        | unique(attribute='domain')
-      }}
+    edge_gateway_apps_dynamic: "{{ edge_gateway_apps_dynamic | unique(attribute='domain') }}"
 
 # ============================================================
 # CLEAN OLD SITE CONFIGS
@@ -134,7 +130,7 @@
 
 - name: Discover existing nginx site configs
   find:
-    paths: "{{ edge_gateway_base_path }}/nginx/sites"
+    paths: "{{ edge_gateway_base_path }}/nginx/conf.d"
     patterns: "*.conf"
     file_type: file
   register: existing_nginx_configs
@@ -163,7 +159,7 @@
 - name: Render site configs
   template:
     src: site.conf.j2
-    dest: "{{ edge_gateway_base_path }}/nginx/sites/{{ item.domain }}.conf"
+    dest: "{{ edge_gateway_base_path }}/nginx/conf.d/{{ item.domain }}.conf"
   loop: "{{ edge_gateway_apps_dynamic }}"
   notify: Reload edge nginx
 
@@ -235,7 +231,7 @@
     job: "{{ edge_gateway_base_path }}/renew-certs.sh"
 
 # ============================================================
-# PHASE 2.6 — WATCHER INSTALL
+# PHASE 2.6 — WATCHER INSTALL (PAUSED)
 # ============================================================
 
 #- name: Install edge watcher script

@@ -119,4 +119,24 @@ ubuntu@ip-172-26-6-161:~/Ram/ansible$ grep -R "download.docker.com" /etc/apt/
 ubuntu@ip-172-26-6-161:~/Ram/ansible$ sudo rm -f /etc/apt/sources.list.d/docker.list
 ubuntu@ip-172-26-6-161:~/Ram/ansible$ sudo apt update
 
+How To Test URLs Now
 
+From server:
+
+curl -H "Host: vscode.unifypesacard.shop" http://127.0.0.1
+curl -H "Host: cgs.unifypesacard.shop" http://127.0.0.1
+
+
+You will get:
+
+502 Bad Gateway (expected, because backend not running)
+
+BUT nginx must stay UP
+
+That means gateway is stable.
+.........................
+................
+
+sudo docker rm -f edge-watcher
+sudo docker ps
+sudo docker exec edge-nginx nginx -t
