@@ -141,6 +141,11 @@ sudo docker rm -f edge-watcher
 sudo docker ps
 sudo docker exec edge-nginx nginx -t
 sudo docker logs -f edge-watcher
+ansible-playbook playbooks/02-edge-gateway.yml -vv
+ls /opt/edge-gateway/nginx/sites
+sudo docker exec edge-nginx ls /etc/nginx/conf.d
+curl -H "Host: vscode.unifypesacard.shop" http://localhost
+
 
 ............................
 

@@ -1,17 +1,41 @@
+# ============================================================
+# AUTO GENERATED EDGE SITE
+# ============================================================
+
+# ------------------------------------------------------------
+# HTTP (ACME + REDIRECT)
+# ------------------------------------------------------------
 server {
     listen 80;
     server_name {{ item.domain }};
 
-    # ------------------------------------------------------------
-    # LET'S ENCRYPT ACME CHALLENGE (MANDATORY)
-    # ------------------------------------------------------------
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
 
     location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ------------------------------------------------------------
+# HTTPS (REAL TRAFFIC)
+# ------------------------------------------------------------
+server {
+    listen 443 ssl;
+    server_name {{ item.domain }};
+
+    ssl_certificate /etc/letsencrypt/live/{{ item.domain }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ item.domain }}/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+
+    location / {
         proxy_pass http://{{ item.upstream }};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
