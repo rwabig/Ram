@@ -73,15 +73,17 @@
 - name: Build edge apps from docker labels
   set_fact:
     edge_gateway_apps_dynamic: "{{ edge_gateway_apps_dynamic + [ {
-        'domain': item.stdout | from_json | first | json_query('Config.Labels.\"edge.domain\"'),
-        'upstream': (item.stdout | from_json | first).Name | regex_replace('^/', '')
-                    ~ ':' ~
-                    (item.stdout | from_json | first | json_query('Config.Labels.\"edge.port\"'))
+        'domain': container.Config.Labels['edge.domain'],
+        'upstream': (container.Name | regex_replace('^/', '')) ~ ':' ~ container.Config.Labels['edge.port']
       } ] }}"
+  vars:
+    container: "{{ item.stdout | from_json | first }}"
   loop: "{{ container_inspect.results }}"
   when:
     - item.stdout is defined
-    - (item.stdout | from_json | first | json_query('Config.Labels.\"edge.enable\"')) == "true"
+    - container.Config.Labels is defined
+    - container.Config.Labels['edge.enable'] is defined
+    - container.Config.Labels['edge.enable'] == "true"
 
 - name: Validate discovered edge apps
   assert:
