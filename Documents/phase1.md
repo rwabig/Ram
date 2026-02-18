@@ -144,9 +144,13 @@ sudo docker logs -f edge-watcher
 ansible-playbook playbooks/02-edge-gateway.yml -vv
 ls /opt/edge-gateway/nginx/sites
 sudo docker exec edge-nginx ls /etc/nginx/conf.d
+sudo ls /opt/edge-gateway/certbot/conf/live/
 curl -H "Host: vscode.unifypesacard.shop" http://localhost
 sudo docker exec edge-nginx nginx -T | grep listen
 sudo docker exec edge-nginx nginx -T | grep 443
+cd /opt/edge-gateway
+sudo ./init-letsencrypt.sh
+sudo docker restart edge-nginx
 
 ........................
 //////////////////
