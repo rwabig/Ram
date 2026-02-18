@@ -15,9 +15,10 @@
     state: directory
     mode: "0755"
 
-- name: Create nginx conf.d directory
+# This directory will be mounted directly to /etc/nginx/conf.d
+- name: Create nginx sites directory (mounted as conf.d)
   file:
-    path: "{{ edge_gateway_base_path }}/nginx/conf.d"
+    path: "{{ edge_gateway_base_path }}/nginx/sites"
     state: directory
     mode: "0755"
 
@@ -36,10 +37,6 @@
     state: directory
     mode: "0755"
 
-# ------------------------------------------------------------
-# APP AUTO-REGISTRATION DIRECTORY
-# ------------------------------------------------------------
-
 - name: Create edge app registry directory
   file:
     path: "{{ edge_gateway_base_path }}/apps"
@@ -55,77 +52,47 @@
     name: "{{ edge_gateway_network }}"
 
 # ============================================================
-# LOAD REGISTERED APPS (FILE DISCOVERY — FIXED)
+# DOCKER LABEL AUTO DISCOVERY (ZERO-TOUCH ONBOARDING)
 # ============================================================
 
-- name: Discover registered edge apps
-  find:
-    paths: "{{ edge_gateway_base_path }}/apps"
-    patterns: "*.yml"
-    file_type: file
-  register: discovered_apps
+- name: Discover running docker containers
+  community.docker.docker_host_info:
+    containers: true
+  register: docker_info
 
 - name: Initialize dynamic apps list
   set_fact:
     edge_gateway_apps_dynamic: []
 
-- name: Read app definition files
-  slurp:
-    src: "{{ item.path }}"
-  loop: "{{ discovered_apps.files }}"
-  register: slurped_apps
-  when: discovered_apps.matched | int > 0
-
-- name: Build dynamic app list from files
+- name: Build edge apps from docker labels
   set_fact:
     edge_gateway_apps_dynamic: >-
       {{
         edge_gateway_apps_dynamic
-        + [ (item.content | b64decode | from_yaml) ]
+        +
+        [
+          {
+            "domain": item.Config.Labels["edge.domain"],
+            "upstream": item.Name[1:] ~ ":" ~ item.Config.Labels["edge.port"]
+          }
+        ]
       }}
-  loop: "{{ slurped_apps.results }}"
-  when: discovered_apps.matched | int > 0
+  loop: "{{ docker_info.containers }}"
+  when:
+    - item.State.Running
+    - item.Config.Labels is defined
+    - item.Config.Labels["edge.enable"] is defined
+    - item.Config.Labels["edge.enable"] == "true"
+    - item.Config.Labels["edge.domain"] is defined
+    - item.Config.Labels["edge.port"] is defined
 
-# ------------------------------------------------------------
-# FALLBACK — backward compatibility
-# ------------------------------------------------------------
-
-- name: Fallback to static apps if none discovered
-  set_fact:
-    edge_gateway_apps_dynamic: "{{ edge_gateway_apps | default([]) }}"
-  when: edge_gateway_apps_dynamic | length == 0
-
-# ============================================================
-# PHASE 2.5 — DOCKER LABEL AUTO DISCOVERY
-# ============================================================
-
-#- name: Discover running docker containers
-#  community.docker.docker_host_info:
-#    containers: true
-#  register: docker_info
-
-#- name: Build edge apps from docker labels
-#  set_fact:
-#    edge_gateway_apps_dynamic: >-
-#      {{
-#        edge_gateway_apps_dynamic
-#        +
-#        [
-#          {
-#            "domain": item.Config.Labels["edge.domain"],
-#            "upstream": item.Name[1:] ~ ":" ~ item.Config.Labels["edge.port"]
-#          }
-#        ]
-#      }}
-#  loop: "{{ docker_info.containers }}"
-#  when:
-#    - item.Config.Labels is defined
-#    - item.Config.Labels["edge.enable"] is defined
-#    - item.Config.Labels["edge.enable"] == "true"
-
-# ------------------------------------------------------------
-# REMOVE DUPLICATES (ELITE SAFETY)
-# ------------------------------------------------------------
+- name: Validate discovered edge apps
+  assert:
+    that:
+      - edge_gateway_apps_dynamic | length > 0
+    fail_msg: "No containers found with edge.enable=true"
+    quiet: true
+  ignore_errors: true
 
 - name: Remove duplicate edge apps
   set_fact:
@@ -163,7 +130,7 @@
     dest: "{{ edge_gateway_base_path }}/nginx/nginx.conf"
   notify: Reload edge nginx
 
-- name: Render site configs
+- name: Render site configs (mounted as conf.d/*.conf)
   template:
     src: site.conf.j2
     dest: "{{ edge_gateway_base_path }}/nginx/sites/{{ item.domain }}.conf"
@@ -171,21 +138,16 @@
   notify: Reload edge nginx
 
 # ============================================================
-# START STACK
+# START STACK (FORCE RECREATE SAFE)
 # ============================================================
 
 - name: Start Edge Gateway stack
-  command: docker compose up -d
+  command: docker compose up -d --force-recreate
   args:
     chdir: "{{ edge_gateway_base_path }}"
 
-- name: Remove default nginx config inside container
-  command: docker exec edge-nginx rm -f /etc/nginx/conf.d/default.conf
-  changed_when: false
-  failed_when: false
-
 # ============================================================
-# HEALTH CHECK (EDGE ELITE SAFETY)
+# HEALTH CHECK
 # ============================================================
 
 - name: Wait for edge nginx container to exist
@@ -223,17 +185,19 @@
 
 - name: Check if certificate exists
   stat:
-    path: "{{ edge_gateway_base_path }}/certbot/conf/live/{{ edge_gateway_apps_dynamic[0].domain }}/fullchain.pem"
-  register: edge_tls_exists
+    path: "{{ edge_gateway_base_path }}/certbot/conf/live/{{ item.domain }}/fullchain.pem"
+  loop: "{{ edge_gateway_apps_dynamic }}"
+  register: edge_tls_stats
   when: edge_gateway_apps_dynamic | length > 0
 
 - name: Bootstrap TLS certificates
-  command: "{{ edge_gateway_base_path }}/init-letsencrypt.sh"
+  command: "{{ edge_gateway_base_path }}/init-letsencrypt.sh {{ item.item.domain }}"
   args:
     chdir: "{{ edge_gateway_base_path }}"
+  loop: "{{ edge_tls_stats.results }}"
   when:
     - edge_gateway_apps_dynamic | length > 0
-    - not edge_tls_exists.stat.exists
+    - not item.stat.exists
 
 - name: Install certificate renewal cron
   cron:
@@ -243,7 +207,7 @@
     job: "{{ edge_gateway_base_path }}/renew-certs.sh"
 
 # ============================================================
-# PHASE 2.6 — WATCHER INSTALL (PAUSED)
+# WATCHER INSTALL
 # ============================================================
 
 - name: Install edge watcher script

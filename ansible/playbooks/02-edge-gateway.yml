@@ -1,13 +1,27 @@
 ---
+# ============================================================
+# EDGE GATEWAY DEPLOYMENT
+# ============================================================
+
 - name: Deploy Edge Gateway
   hosts: edge_gateway_servers
   become: true
 
+  vars:
+    # --------------------------------------------------------
+    # EDGE CORE SETTINGS
+    # --------------------------------------------------------
+    edge_gateway_email: "rwabig1@gmail.com"
+
+    # --------------------------------------------------------
+    # STATIC APPS (BACKWARD COMPATIBILITY)
+    # NOTE:
+    # Label auto-discovery may override this later.
+    # Keeping this ensures safe fallback behavior.
+    # --------------------------------------------------------
+    edge_gateway_apps:
+      - domain: "vscode.unifypesacard.shop"
+        upstream: "vscode:8080"
+
   roles:
     - role: edge_gateway
-      vars:
-        edge_gateway_email: "rwabig1@gmail.com"
-
-        edge_gateway_apps:
-          - domain: "vscode.unifypesacard.shop"
-            upstream: "vscode:8080"

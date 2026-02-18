@@ -3,7 +3,13 @@
 # VS CODE — DIRECTORIES
 # ============================================================
 
-- name: Create vscode directories
+- name: Ensure vscode base directory exists
+  file:
+    path: "{{ vscode_base_path }}"
+    state: directory
+    mode: "0755"
+
+- name: Ensure vscode data directory exists
   file:
     path: "{{ vscode_base_path }}/data"
     state: directory
@@ -13,21 +19,29 @@
 # DOCKER COMPOSE
 # ============================================================
 
-- name: Render vscode compose
+- name: Render vscode docker compose
   template:
     src: docker-compose.yml.j2
     dest: "{{ vscode_base_path }}/docker-compose.yml"
+    mode: "0644"
 
 - name: Start vscode stack
   command: docker compose up -d
   args:
     chdir: "{{ vscode_base_path }}"
+  changed_when: false
 
 # ============================================================
-# EDGE REGISTRATION (AUTO DISCOVERY)
+# EDGE REGISTRATION (AUTO DISCOVERY - LEGACY FALLBACK)
 # ============================================================
 
-- name: Register vscode with edge gateway
+- name: Ensure edge apps directory exists
+  file:
+    path: "{{ edge_gateway_base_path }}/apps"
+    state: directory
+    mode: "0755"
+
+- name: Register vscode with edge gateway (fallback mode)
   copy:
     dest: "{{ edge_gateway_base_path }}/apps/vscode.yml"
     content: |
@@ -36,7 +50,7 @@
   notify: Reload edge nginx
 
 # ============================================================
-# keep disabled for now — future automation hook
+# FUTURE AUTOMATION HOOK (DISABLED)
 # ============================================================
 
 - name: Trigger edge rebuild

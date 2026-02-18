@@ -1,10 +1,33 @@
 ---
+# ============================================================
+# EDGE GATEWAY — DEFAULT SETTINGS
+# ============================================================
+
+# ------------------------------------------------------------
+# CORE PATHS
+# ------------------------------------------------------------
 edge_gateway_base_path: "/opt/edge-gateway"
+
+# ------------------------------------------------------------
+# TLS / LETSENCRYPT
+# ------------------------------------------------------------
 edge_gateway_email: ""
+
+# ------------------------------------------------------------
+# DOCKER NETWORK
+# all edge-routed services must join this network
+# ------------------------------------------------------------
 edge_gateway_network: "edge-net"
 
-# manual fallback (kept for compatibility)
+# ------------------------------------------------------------
+# MANUAL FALLBACK APPS
+# kept for backward compatibility
+# (auto discovery preferred)
+# ------------------------------------------------------------
 edge_gateway_apps: []
 
-# ELITE auto-discovery label
+# ------------------------------------------------------------
+# ELITE AUTO-DISCOVERY LABEL
+# containers with this label become edge-exposed
+# ------------------------------------------------------------
 edge_gateway_docker_label: "edge.enable=true"

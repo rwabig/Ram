@@ -18,6 +18,14 @@ services:
     networks:
       - {{ edge_gateway_network }}
 
+    # --------------------------------------------------------
+    # EDGE AUTO-DISCOVERY LABELS (ELITE MODE)
+    # --------------------------------------------------------
+    labels:
+      edge.enable: "true"
+      edge.domain: "{{ vscode_domain }}"
+      edge.port: "{{ vscode_port }}"
+
 networks:
   {{ edge_gateway_network }}:
     external: true

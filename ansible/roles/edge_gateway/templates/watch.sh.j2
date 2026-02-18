@@ -10,20 +10,30 @@ generate_configs() {
 
   echo "[EDGE WATCHER] rebuilding configs"
 
-  rm -rf $TMP_DIR
-  mkdir -p $TMP_DIR
+  # -------------------------------------------------
+  # recreate temp directory safely
+  # -------------------------------------------------
+  rm -rf "$TMP_DIR"
+  mkdir -p "$TMP_DIR"
 
-  docker ps --format '{{ "{{.ID}}" }}' | while read id; do
+  # -------------------------------------------------
+  # discover running containers
+  # -------------------------------------------------
+  docker ps --format '{{ "{{.ID}}" }}' | while read -r id; do
 
-    enable=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.enable\" }}" }}' $id 2>/dev/null)
-
+    enable=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.enable\" }}" }}' "$id" 2>/dev/null || true)
     [ "$enable" = "true" ] || continue
 
-    domain=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.domain\" }}" }}' $id)
-    port=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.port\" }}" }}' $id)
-    name=$(docker inspect -f '{{ "{{.Name}}" }}' $id | sed 's/\///')
+    domain=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.domain\" }}" }}' "$id" 2>/dev/null || true)
+    port=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.port\" }}" }}' "$id" 2>/dev/null || true)
+    name=$(docker inspect -f '{{ "{{.Name}}" }}' "$id" 2>/dev/null | sed 's/\///')
 
-cat > $TMP_DIR/$domain.conf <<EOF
+    # skip incomplete configs
+    [ -n "$domain" ] || continue
+    [ -n "$port" ] || continue
+    [ -n "$name" ] || continue
+
+cat > "$TMP_DIR/$domain.conf" <<EOF
 server {
     listen 80;
     server_name $domain;
@@ -37,6 +47,10 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
     }
 }
 EOF
@@ -44,30 +58,35 @@ EOF
   done
 
   # -------------------------------------------------
-  # validate config BEFORE replacing live config
+  # replace live configs safely
   # -------------------------------------------------
-  rm -f $SITES_DIR/*.conf
-  cp $TMP_DIR/*.conf $SITES_DIR/ 2>/dev/null || true
+  rm -f "$SITES_DIR"/*.conf 2>/dev/null || true
+  cp "$TMP_DIR"/*.conf "$SITES_DIR"/ 2>/dev/null || true
 
-  if docker exec edge-nginx nginx -t; then
-      docker exec edge-nginx nginx -s reload
+  # -------------------------------------------------
+  # validate BEFORE reload
+  # -------------------------------------------------
+  if docker exec edge-nginx nginx -t >/dev/null 2>&1; then
+      docker exec edge-nginx nginx -s reload >/dev/null 2>&1
       echo "[EDGE WATCHER] nginx reloaded"
   else
       echo "[EDGE WATCHER] config invalid — reload skipped"
   fi
 }
 
-# initial run
+# =================================================
+# INITIAL GENERATION
+# =================================================
 generate_configs
 
-# -------------------------------------------------
-# ELITE EVENT FILTERING
-# -------------------------------------------------
+# =================================================
+# ELITE EVENT WATCHING
+# =================================================
 docker events \
   --filter event=start \
   --filter event=die \
   --filter event=destroy \
-  | while read line; do
+  | while read -r line; do
       echo "[EDGE WATCHER] change detected"
       generate_configs
 done

@@ -1,4 +1,8 @@
 ---
+# ============================================================
+# VS CODE STACK DEPLOYMENT
+# ============================================================
+
 - name: Deploy VS Code
   hosts: edge_gateway_servers
   become: true

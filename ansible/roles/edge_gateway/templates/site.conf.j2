@@ -2,6 +2,7 @@
 # AUTO GENERATED EDGE SITE
 # ============================================================
 
+
 # ------------------------------------------------------------
 # HTTP (ACME + REDIRECT)
 # ------------------------------------------------------------
@@ -9,14 +10,17 @@ server {
     listen 80;
     server_name {{ item.domain }};
 
+    # Let's Encrypt challenge
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
 
+    # Force HTTPS
     location / {
         return 301 https://$host$request_uri;
     }
 }
+
 
 # ------------------------------------------------------------
 # HTTPS (REAL TRAFFIC)
@@ -25,17 +29,36 @@ server {
     listen 443 ssl;
     server_name {{ item.domain }};
 
-    ssl_certificate /etc/letsencrypt/live/{{ item.domain }}/fullchain.pem;
+    # --------------------------------------------------------
+    # TLS
+    # --------------------------------------------------------
+    ssl_certificate     /etc/letsencrypt/live/{{ item.domain }}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/{{ item.domain }}/privkey.pem;
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:10m;
+    ssl_session_tickets off;
 
+    # --------------------------------------------------------
+    # MAIN REVERSE PROXY
+    # --------------------------------------------------------
     location / {
+
         proxy_pass http://{{ item.upstream }};
+
+        # ---- standard forwarding ----
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # ---- websocket support (VSCode / modern apps) ----
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # ---- stability ----
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
     }
 }
