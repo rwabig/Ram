@@ -55,36 +55,33 @@
 # DOCKER LABEL AUTO DISCOVERY (ZERO-TOUCH ONBOARDING)
 # ============================================================
 
-- name: Discover running docker containers
-  community.docker.docker_host_info:
-    containers: true
-  register: docker_info
+- name: Get running container IDs
+  command: docker ps -q
+  register: running_containers
+  changed_when: false
 
 - name: Initialize dynamic apps list
   set_fact:
     edge_gateway_apps_dynamic: []
 
+- name: Inspect running containers
+  command: docker inspect {{ item }}
+  register: container_inspect
+  loop: "{{ running_containers.stdout_lines }}"
+  changed_when: false
+
 - name: Build edge apps from docker labels
   set_fact:
-    edge_gateway_apps_dynamic: >-
-      {{
-        edge_gateway_apps_dynamic
-        +
-        [
-          {
-            "domain": item.Config.Labels["edge.domain"],
-            "upstream": item.Name[1:] ~ ":" ~ item.Config.Labels["edge.port"]
-          }
-        ]
-      }}
-  loop: "{{ docker_info.containers }}"
+    edge_gateway_apps_dynamic: "{{ edge_gateway_apps_dynamic + [ {
+        'domain': item.stdout | from_json | first | json_query('Config.Labels.\"edge.domain\"'),
+        'upstream': (item.stdout | from_json | first).Name | regex_replace('^/', '')
+                    ~ ':' ~
+                    (item.stdout | from_json | first | json_query('Config.Labels.\"edge.port\"'))
+      } ] }}"
+  loop: "{{ container_inspect.results }}"
   when:
-    - item.State.Running
-    - item.Config.Labels is defined
-    - item.Config.Labels["edge.enable"] is defined
-    - item.Config.Labels["edge.enable"] == "true"
-    - item.Config.Labels["edge.domain"] is defined
-    - item.Config.Labels["edge.port"] is defined
+    - item.stdout is defined
+    - (item.stdout | from_json | first | json_query('Config.Labels.\"edge.enable\"')) == "true"
 
 - name: Validate discovered edge apps
   assert:
