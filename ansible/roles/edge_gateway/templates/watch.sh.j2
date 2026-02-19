@@ -1,6 +1,3 @@
-this is the current watch.sh.j2 before replace with you given current file
-inspect to make sure the replce meet our current setup
-
 #!/bin/sh
 set -eu
 
@@ -62,7 +59,7 @@ generate_configs() {
 
     enable=$(docker inspect -f '{% raw %}{{ index .Config.Labels "'"$EDGE_ENABLE_LABEL"'" }}{% endraw %}' "$id" 2>/dev/null || true)
     [ "$enable" = "true" ] || continue
-    
+
     domain=$(docker inspect -f '{% raw %}{{ index .Config.Labels "'"$EDGE_DOMAIN_LABEL"'" }}{% endraw %}' "$id" 2>/dev/null || true)
     port=$(docker inspect -f '{% raw %}{{ index .Config.Labels "'"$EDGE_PORT_LABEL"'" }}{% endraw %}' "$id" 2>/dev/null || true)
     name=$(docker inspect -f '{% raw %}{{ .Name }}{% endraw %}' "$id" 2>/dev/null | sed 's#^/##')
@@ -73,6 +70,18 @@ generate_configs() {
 
     FOUND=1
 
+    CERT_PATH="/etc/letsencrypt/live/$domain/fullchain.pem"
+
+    # Check if certificate exists inside nginx container
+    if docker exec "$NGINX_CONTAINER" test -f "$CERT_PATH" >/dev/null 2>&1; then
+        SSL_READY=1
+    else
+        SSL_READY=0
+    fi
+
+# ------------------------------------------------------------
+# WRITE HTTP BLOCK (ALWAYS)
+# ------------------------------------------------------------
 cat > "$TMP_DIR/$domain.conf" <<EOF
 {% raw %}
 # ------------------------------------------------------------
@@ -87,10 +96,48 @@ server {
     }
 
     location / {
+{% endraw %}
+EOF
+
+    if [ "$SSL_READY" -eq 1 ]; then
+cat >> "$TMP_DIR/$domain.conf" <<EOF
+{% raw %}
         return 301 https://\$host\$request_uri;
+{% endraw %}
+EOF
+    else
+cat >> "$TMP_DIR/$domain.conf" <<EOF
+{% raw %}
+        proxy_pass http://$name:$port;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
+{% endraw %}
+EOF
+    fi
+
+cat >> "$TMP_DIR/$domain.conf" <<EOF
+{% raw %}
     }
 }
+{% endraw %}
+EOF
 
+# ------------------------------------------------------------
+# WRITE HTTPS BLOCK (ONLY IF CERT EXISTS)
+# ------------------------------------------------------------
+    if [ "$SSL_READY" -eq 1 ]; then
+cat >> "$TMP_DIR/$domain.conf" <<EOF
+{% raw %}
 # ------------------------------------------------------------
 # HTTPS
 # ------------------------------------------------------------
@@ -122,6 +169,7 @@ server {
 }
 {% endraw %}
 EOF
+    fi
 
   done
 
