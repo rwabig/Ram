@@ -1,24 +1,57 @@
 #!/bin/sh
-set -e
+set -eu
 
-echo "[EDGE WATCHER ELITE] started"
+echo "[EDGE WATCHER ELITE] starting..."
 
 SITES_DIR=/sites
 TMP_DIR=/tmp/edge-sites
+LOCK_FILE=/tmp/edge-lock
+NGINX_CONTAINER=edge-nginx
 
+# ==========================================================
+# WAIT FOR DOCKER SOCKET
+# ==========================================================
+echo "[EDGE WATCHER] waiting for docker socket..."
+while [ ! -S /var/run/docker.sock ]; do
+  sleep 1
+done
+
+# ==========================================================
+# WAIT FOR NGINX CONTAINER
+# ==========================================================
+echo "[EDGE WATCHER] waiting for nginx container..."
+while ! docker inspect "$NGINX_CONTAINER" >/dev/null 2>&1; do
+  sleep 1
+done
+
+# ==========================================================
+# WAIT UNTIL NGINX IS READY
+# ==========================================================
+echo "[EDGE WATCHER] waiting for nginx readiness..."
+until docker exec "$NGINX_CONTAINER" nginx -t >/dev/null 2>&1; do
+  sleep 2
+done
+
+echo "[EDGE WATCHER] nginx ready"
+
+# ==========================================================
+# GENERATE CONFIGS (ATOMIC + SAFE)
+# ==========================================================
 generate_configs() {
+
+  # Prevent overlapping runs
+  if [ -f "$LOCK_FILE" ]; then
+    return
+  fi
+  touch "$LOCK_FILE"
 
   echo "[EDGE WATCHER] rebuilding configs"
 
-  # -------------------------------------------------
-  # recreate temp directory safely
-  # -------------------------------------------------
   rm -rf "$TMP_DIR"
   mkdir -p "$TMP_DIR"
 
-  # -------------------------------------------------
-  # discover running containers
-  # -------------------------------------------------
+  FOUND=0
+
   docker ps --format '{{ "{{.ID}}" }}' | while read -r id; do
 
     enable=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.enable\" }}" }}' "$id" 2>/dev/null || true)
@@ -28,100 +61,105 @@ generate_configs() {
     port=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.port\" }}" }}' "$id" 2>/dev/null || true)
     name=$(docker inspect -f '{{ "{{.Name}}" }}' "$id" 2>/dev/null | sed 's/\///')
 
-    # skip incomplete configs
     [ -n "$domain" ] || continue
     [ -n "$port" ] || continue
     [ -n "$name" ] || continue
 
-cat > $TMP_DIR/$domain.conf <<EOF
+    FOUND=1
 
+cat > "$TMP_DIR/$domain.conf" <<EOF
 # ------------------------------------------------------------
-
 # HTTP
-
 # ------------------------------------------------------------
-
 server {
-listen 80;
-server_name $domain;
+    listen 80;
+    server_name $domain;
 
-```
-location /.well-known/acme-challenge/ {
-    root /var/www/certbot;
-}
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
 
-location / {
-    return 301 https://\$host\$request_uri;
-}
-```
-
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
 }
 
 # ------------------------------------------------------------
-
 # HTTPS
-
 # ------------------------------------------------------------
-
 server {
-listen 443 ssl;
-server_name $domain;
+    listen 443 ssl;
+    server_name $domain;
 
-```
-ssl_certificate /etc/letsencrypt/live/$domain/fullchain.pem;
-ssl_certificate_key /etc/letsencrypt/live/$domain/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/$domain/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$domain/privkey.pem;
 
-ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_protocols TLSv1.2 TLSv1.3;
 
-location / {
-    proxy_pass http://$name:$port;
+    location / {
+        proxy_pass http://$name:$port;
 
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade \$http_upgrade;
-    proxy_set_header Connection "upgrade";
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
 
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto \$scheme;
-}
-```
-
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
 }
 EOF
 
   done
 
-  # -------------------------------------------------
-  # replace live configs safely
-  # -------------------------------------------------
-  rm -f "$SITES_DIR"/*.conf 2>/dev/null || true
-  cp "$TMP_DIR"/*.conf "$SITES_DIR"/ 2>/dev/null || true
+  # If no services found, do not wipe existing configs
+  if [ "$FOUND" -eq 0 ]; then
+    echo "[EDGE WATCHER] no edge-enabled containers found"
+    rm -f "$LOCK_FILE"
+    return
+  fi
 
-  # -------------------------------------------------
-  # validate BEFORE reload
-  # -------------------------------------------------
-  if docker exec edge-nginx nginx -t >/dev/null 2>&1; then
-      docker exec edge-nginx nginx -s reload >/dev/null 2>&1
+  # ----------------------------------------------------------
+  # ATOMIC REPLACEMENT (only if configs changed)
+  # ----------------------------------------------------------
+  if ! diff -qr "$TMP_DIR" "$SITES_DIR" >/dev/null 2>&1; then
+    echo "[EDGE WATCHER] applying new configs"
+    rm -f "$SITES_DIR"/*.conf 2>/dev/null || true
+    cp "$TMP_DIR"/*.conf "$SITES_DIR"/
+  else
+    echo "[EDGE WATCHER] no config changes"
+    rm -f "$LOCK_FILE"
+    return
+  fi
+
+  # ----------------------------------------------------------
+  # VALIDATE BEFORE RELOAD
+  # ----------------------------------------------------------
+  if docker exec "$NGINX_CONTAINER" nginx -t >/dev/null 2>&1; then
+      docker exec "$NGINX_CONTAINER" nginx -s reload >/dev/null 2>&1
       echo "[EDGE WATCHER] nginx reloaded"
   else
       echo "[EDGE WATCHER] config invalid — reload skipped"
   fi
+
+  rm -f "$LOCK_FILE"
 }
 
-# =================================================
-# INITIAL GENERATION
-# =================================================
+# ==========================================================
+# INITIAL SAFE GENERATION
+# ==========================================================
+sleep 3
 generate_configs
 
-# =================================================
-# ELITE EVENT WATCHING
-# =================================================
+# ==========================================================
+# EVENT LISTENER (DEBOUNCED)
+# ==========================================================
 docker events \
   --filter event=start \
   --filter event=die \
   --filter event=destroy \
-  | while read -r line; do
-      echo "[EDGE WATCHER] change detected"
+  | while read -r _; do
+      sleep 2
       generate_configs
 done
