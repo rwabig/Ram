@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
 
   # ============================================================
@@ -9,20 +11,13 @@ services:
     restart: unless-stopped
 
     volumes:
-      # --------------------------------------------------------
-      # MAIN NGINX CONFIG
-      # --------------------------------------------------------
+      # Core config
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
 
-      # --------------------------------------------------------
-      # AUTO-GENERATED SITES
-      # (mounted directly as conf.d)
-      # --------------------------------------------------------
-      - ./nginx/sites:/etc/nginx/conf.d
+      # Auto-generated vhosts
+      - ./nginx/sites:/etc/nginx/conf.d:ro
 
-      # --------------------------------------------------------
-      # TLS DATA (LETSENCRYPT)
-      # --------------------------------------------------------
+      # TLS
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
 
@@ -33,20 +28,24 @@ services:
     networks:
       - {{ edge_gateway_network }}
 
-    # --------------------------------------------------------
-    # HEALTH CHECK
-    # validates nginx config continuously
-    # --------------------------------------------------------
     healthcheck:
-      test: ["CMD-SHELL", "nginx -t || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "nginx -t"]
+      interval: 20s
       timeout: 5s
-      retries: 5
-      start_period: 10s
+      retries: 3
+      start_period: 20s
+
+    security_opt:
+      - no-new-privileges:true
+
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
 
 
   # ============================================================
-  # CERTBOT AUTO RENEWAL SERVICE
+  # CERTBOT AUTO RENEWER
   # ============================================================
   certbot:
     image: certbot/certbot
@@ -55,10 +54,11 @@ services:
 
     entrypoint: /bin/sh
     command: >
-      -c "while :;
-      do sleep 12h;
-      certbot renew --webroot -w /var/www/certbot;
-      done"
+      -c "trap exit TERM;
+          while :; do
+            certbot renew --webroot -w /var/www/certbot --quiet;
+            sleep 12h;
+          done"
 
     volumes:
       - ./certbot/conf:/etc/letsencrypt
@@ -67,9 +67,12 @@ services:
     networks:
       - {{ edge_gateway_network }}
 
+    security_opt:
+      - no-new-privileges:true
+
 
   # ============================================================
-  # EDGE WATCHER (AUTO DISCOVERY / AUTO RELOAD)
+  # EDGE WATCHER (Docker Label Auto-Discovery)
   # ============================================================
   edge-watcher:
     image: docker:cli
@@ -79,13 +82,16 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./nginx/sites:/sites
-      - ./scripts:/scripts
+      - ./scripts:/scripts:ro
 
     entrypoint: /bin/sh
     command: /scripts/watch.sh
 
     networks:
       - {{ edge_gateway_network }}
+
+    security_opt:
+      - no-new-privileges:true
 
 
 # ============================================================
