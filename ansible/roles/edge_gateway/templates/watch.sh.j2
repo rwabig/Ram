@@ -7,6 +7,9 @@ SITES_DIR=/sites
 TMP_DIR=/tmp/edge-sites
 LOCK_FILE=/tmp/edge-lock
 NGINX_CONTAINER=edge-nginx
+EDGE_ENABLE_LABEL="edge.enable"
+EDGE_DOMAIN_LABEL="edge.domain"
+EDGE_PORT_LABEL="edge.port"
 
 # ==========================================================
 # WAIT FOR DOCKER SOCKET
@@ -52,18 +55,18 @@ generate_configs() {
 
   FOUND=0
 
-  docker ps --format '{{ "{{.ID}}" }}' | while read -r id; do
+  docker ps -q | while read -r id; do
 
-    enable=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.enable\" }}" }}' "$id" 2>/dev/null || true)
+    enable=$(docker inspect -f "{{ index .Config.Labels \"$EDGE_ENABLE_LABEL\" }}" "$id" 2>/dev/null || true)
     [ "$enable" = "true" ] || continue
 
-    domain=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.domain\" }}" }}' "$id" 2>/dev/null || true)
-    port=$(docker inspect -f '{{ "{{ index .Config.Labels \"edge.port\" }}" }}' "$id" 2>/dev/null || true)
-    name=$(docker inspect -f '{{ "{{.Name}}" }}' "$id" 2>/dev/null | sed 's/\///')
+    domain=$(docker inspect -f "{{ index .Config.Labels \"$EDGE_DOMAIN_LABEL\" }}" "$id" 2>/dev/null || true)
+    port=$(docker inspect -f "{{ index .Config.Labels \"$EDGE_PORT_LABEL\" }}" "$id" 2>/dev/null || true)
+    name=$(docker inspect -f "{{ .Name }}" "$id" 2>/dev/null | sed 's#^/##')
 
-    [ -n "$domain" ] || continue
-    [ -n "$port" ] || continue
-    [ -n "$name" ] || continue
+    [ -n "${domain:-}" ] || continue
+    [ -n "${port:-}" ] || continue
+    [ -n "${name:-}" ] || continue
 
     FOUND=1
 
@@ -95,6 +98,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/$domain/privkey.pem;
 
     ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
 
     location / {
         proxy_pass http://$name:$port;
@@ -107,6 +111,9 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 60s;
     }
 }
 EOF
@@ -125,6 +132,8 @@ EOF
   # ----------------------------------------------------------
   if ! diff -qr "$TMP_DIR" "$SITES_DIR" >/dev/null 2>&1; then
     echo "[EDGE WATCHER] applying new configs"
+
+    mkdir -p "$SITES_DIR"
     rm -f "$SITES_DIR"/*.conf 2>/dev/null || true
     cp "$TMP_DIR"/*.conf "$SITES_DIR"/
   else
