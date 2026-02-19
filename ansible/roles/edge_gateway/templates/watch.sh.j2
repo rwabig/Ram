@@ -1,3 +1,6 @@
+this is the current watch.sh.j2 before replace with you given current file
+inspect to make sure the replce meet our current setup
+
 #!/bin/sh
 set -eu
 
@@ -57,12 +60,12 @@ generate_configs() {
 
   docker ps -q | while read -r id; do
 
-    enable=$(docker inspect -f "{{ index .Config.Labels \"$EDGE_ENABLE_LABEL\" }}" "$id" 2>/dev/null || true)
+    enable=$(docker inspect -f '{% raw %}{{ index .Config.Labels "'"$EDGE_ENABLE_LABEL"'" }}{% endraw %}' "$id" 2>/dev/null || true)
     [ "$enable" = "true" ] || continue
-
-    domain=$(docker inspect -f "{{ index .Config.Labels \"$EDGE_DOMAIN_LABEL\" }}" "$id" 2>/dev/null || true)
-    port=$(docker inspect -f "{{ index .Config.Labels \"$EDGE_PORT_LABEL\" }}" "$id" 2>/dev/null || true)
-    name=$(docker inspect -f "{{ .Name }}" "$id" 2>/dev/null | sed 's#^/##')
+    
+    domain=$(docker inspect -f '{% raw %}{{ index .Config.Labels "'"$EDGE_DOMAIN_LABEL"'" }}{% endraw %}' "$id" 2>/dev/null || true)
+    port=$(docker inspect -f '{% raw %}{{ index .Config.Labels "'"$EDGE_PORT_LABEL"'" }}{% endraw %}' "$id" 2>/dev/null || true)
+    name=$(docker inspect -f '{% raw %}{{ .Name }}{% endraw %}' "$id" 2>/dev/null | sed 's#^/##')
 
     [ -n "${domain:-}" ] || continue
     [ -n "${port:-}" ] || continue
