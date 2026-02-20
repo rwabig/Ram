@@ -152,6 +152,14 @@ cd /opt/edge-gateway
 sudo ./init-letsencrypt.sh
 sudo docker restart edge-nginx
 
+
+# Execution Flow (How You’ll Use This)
+ansible-playbook playbooks/01-docker.yml
+ansible-playbook playbooks/02-edge-gateway.yml
+ansible-playbook playbooks/03-vscode.yml
+ansible-playbook playbooks/04-authelia.yml
+# or
+ansible-playbook -i inventory deploy_php_app.yml
 ........................
 //////////////////
 If you'd like next, we can properly re-enable Docker label auto-discovery and make onboarding fully automatic.
