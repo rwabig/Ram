@@ -268,3 +268,129 @@ Application Runtime Layer
 Database Layer
 
 This is real platform territory.
+
+
+# /////////////////////////////////////////////////
+
+✅ Production-Grade Solution (Best Practice)
+
+Use SSH deploy key authentication, not HTTPS passwords.
+
+This is the correct way for servers.
+
+🔐 Step 1 — Generate SSH Key on Server
+
+On your deployment server:
+
+ssh-keygen -t ed25519 -C "ram-deploy-key"
+
+
+Press Enter for defaults.
+Do NOT set passphrase.
+
+This creates:
+
+~/.ssh/id_ed25519
+~/.ssh/id_ed25519.pub
+
+🔐 Step 2 — Add Deploy Key to GitHub Repo
+
+Go to your CGS GitHub repo
+
+Settings → Deploy Keys
+
+Add new key
+
+Paste content of:
+
+cat ~/.ssh/id_ed25519.pub
+
+
+Allow read access (write not needed)
+
+Now your server can clone securely.
+
+🔄 Step 3 — Change Repo URL in Playbook
+
+Update:
+
+app_repo: git@github.com:rwabig/CGS.git
+
+
+NOT https.
+
+So:
+
+app_repo: git@github.com:rwabig/CGS.git
+
+🔧 Step 4 — Ensure Known Hosts
+
+Add this task before cloning in php_app/tasks/main.yml:
+
+- name: Ensure GitHub is in known_hosts
+  known_hosts:
+    name: github.com
+    key: "{{ lookup('pipe', 'ssh-keyscan -t ed25519 github.com') }}"
+    path: /root/.ssh/known_hosts
+
+
+This prevents host verification failure.
+
+🧠 Why SSH Deploy Keys Are Correct
+
+No passwords stored
+
+No tokens exposed in playbooks
+
+Revokable anytime
+
+Repo-specific
+
+Production standard
+
+CI/CD compatible
+
+❌ What You Should NOT Do
+
+Put GitHub token in playbook
+
+Use username:password in URL
+
+Store PAT in plain text vars
+
+Use interactive clone
+
+Those are dev shortcuts, not platform-grade.
+
+🏗 Alternative (If Multiple Private Repos)
+
+If you will deploy many private repos:
+
+Better to:
+
+Create one dedicated ram-deployer GitHub machine user
+
+Add its SSH key to all repos
+
+Use that identity everywhere
+
+This scales better than per-repo deploy keys.
+
+🚀 After This Fix
+
+Run:
+
+ansible-playbook -i inventory deploy_php_app.yml
+
+
+It should:
+
+Clone successfully
+
+Build image
+
+Start container
+
+Edge auto-detect
+
+HTTPS provision

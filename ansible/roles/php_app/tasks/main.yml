@@ -7,6 +7,12 @@
     group: root
     mode: '0755'
 
+- name: Ensure GitHub is in known_hosts
+  known_hosts:
+    name: github.com
+    key: "{{ lookup('pipe', 'ssh-keyscan -t ed25519 github.com') }}"
+    path: /root/.ssh/known_hosts
+
 - name: Clone or update app repository
   git:
     repo: "{{ app_repo }}"

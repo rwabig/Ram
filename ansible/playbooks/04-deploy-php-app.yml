@@ -6,7 +6,7 @@
   vars:
     app_name: cgs
     app_domain: cgs.example.com
-    app_repo: https://github.com/rwabig/CGS.git
+    app_repo: git@github.com:rwabig/CGS.git
     app_branch: main
 
     db_name: cgs
