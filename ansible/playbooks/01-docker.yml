@@ -1,6 +1,6 @@
 ---
 - name: Install Docker Engine
-  hosts: edge_gateway_servers
+  hosts: servers
   become: true
 
   roles:

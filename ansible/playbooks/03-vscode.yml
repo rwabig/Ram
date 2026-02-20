@@ -4,7 +4,7 @@
 # ============================================================
 
 - name: Deploy VS Code
-  hosts: edge_gateway_servers
+  hosts: vscode_servers
   become: true
 
   roles:
