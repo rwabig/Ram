@@ -1,5 +1,5 @@
 app_container_name: "{{ app_name }}-app"
 app_image_name: "{{ app_name }}-php"
 app_root: "/srv/apps/{{ app_name }}"
-edge_gateway_network: "edge_net"
+edge_gateway_network: "edge-net"
 app_network: "app_net"
