@@ -11,7 +11,7 @@
     # --------------------------------------------------------
     # EDGE CORE SETTINGS
     # --------------------------------------------------------
-    edge_gateway_email: "rwabig1@gmail.com"
+    edge_gateway_email: "email@example.com"
 
     # --------------------------------------------------------
     # STATIC APPS (BACKWARD COMPATIBILITY)
@@ -20,7 +20,7 @@
     # Keeping this ensures safe fallback behavior.
     # --------------------------------------------------------
     edge_gateway_apps:
-      - domain: "vscode.unifypesacard.shop"
+      - domain: "vscode.example.com"
         upstream: "vscode:8080"
 
   roles:
