@@ -1,0 +1,3 @@
+db_container_name: "{{ app_name }}-db"
+db_image: "postgis/postgis:17-3.4"
+db_volume: "{{ app_name }}_pgdata"

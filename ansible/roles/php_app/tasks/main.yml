@@ -1,0 +1,45 @@
+---
+- name: Create app directory
+  file:
+    path: "{{ app_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Clone or update app repository
+  git:
+    repo: "{{ app_repo }}"
+    dest: "{{ app_root }}"
+    version: "{{ app_branch }}"
+    force: yes
+
+- name: Copy Dockerfile template
+  template:
+    src: Dockerfile.j2
+    dest: "{{ app_root }}/Dockerfile"
+
+- name: Build PHP image
+  community.docker.docker_image:
+    name: "{{ app_image_name }}"
+    source: build
+    build:
+      path: "{{ app_root }}"
+
+- name: Run PHP container
+  docker_container:
+    name: "{{ app_container_name }}"
+    image: "{{ app_image_name }}"
+    restart_policy: unless-stopped
+    env:
+      DB_HOST: "{{ db_container_name }}"
+      DB_NAME: "{{ db_name }}"
+      DB_USER: "{{ db_user }}"
+      DB_PASS: "{{ db_password }}"
+    labels:
+      edge.enable: "true"
+      edge.domain: "{{ app_domain }}"
+      edge.port: "80"
+    networks:
+      - name: "{{ app_network }}"
+    state: started

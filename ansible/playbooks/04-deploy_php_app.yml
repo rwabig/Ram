@@ -1,0 +1,18 @@
+---
+- name: Deploy PHP Application Platform
+  hosts: app_nodes
+  become: true
+
+  vars:
+    app_name: cgs
+    app_domain: cgs.example.com
+    app_repo: https://github.com/rwabig/CGS.git
+    app_branch: main
+
+    db_name: cgs
+    db_user: cgs_user
+    db_password: strong_password
+
+  roles:
+    - postgres_db
+    - php_app

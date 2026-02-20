@@ -1,0 +1,20 @@
+---
+- name: Ensure app network exists
+  docker_network:
+    name: app_net
+    state: present
+
+- name: Run PostgreSQL container
+  docker_container:
+    name: "{{ db_container_name }}"
+    image: "{{ db_image }}"
+    restart_policy: unless-stopped
+    env:
+      POSTGRES_DB: "{{ db_name }}"
+      POSTGRES_USER: "{{ db_user }}"
+      POSTGRES_PASSWORD: "{{ db_password }}"
+    volumes:
+      - "{{ db_volume }}:/var/lib/postgresql/data"
+    networks:
+      - name: app_net
+    state: started
