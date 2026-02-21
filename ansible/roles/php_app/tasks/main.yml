@@ -29,13 +29,16 @@
   community.docker.docker_image:
     name: "{{ app_image_name }}"
     source: build
+    force_source: true
     build:
       path: "{{ app_root }}"
+      pull: true
 
 - name: Run PHP container
   docker_container:
     name: "{{ app_container_name }}"
     image: "{{ app_image_name }}"
+    recreate: true
     restart_policy: unless-stopped
     env:
       DB_HOST: "{{ db_container_name }}"
@@ -47,5 +50,6 @@
       edge.domain: "{{ app_domain }}"
       edge.port: "80"
     networks:
+      - name: "{{ edge_gateway_network }}"
       - name: "{{ app_network }}"
     state: started
