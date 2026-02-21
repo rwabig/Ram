@@ -23,9 +23,5 @@
       - domain: "vscode.example.com"
         upstream: "vscode:8080"
 
-    edge_gateway_apps:
-      - domain: "cgs.example.com"
-        upstream: "cgs:80"
-
   roles:
     - role: edge_gateway
