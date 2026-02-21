@@ -38,9 +38,14 @@
   docker_container:
     name: "{{ app_container_name }}"
     image: "{{ app_image_name }}"
+    state: absent
+
+- name: Run PHP container
+  docker_container:
+    name: "{{ app_container_name }}"
+    image: "{{ app_image_name }}"
     recreate: true
     restart_policy: unless-stopped
-    purge_networks: true
     env:
       DB_HOST: "{{ db_container_name }}"
       DB_NAME: "{{ db_name }}"
