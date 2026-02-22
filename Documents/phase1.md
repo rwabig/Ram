@@ -137,7 +137,7 @@ That means gateway is stable.
 .........................
 ................
 
-sudo docker rm -f edge-watcher
+sudo docker rm -f edge-watch
 sudo docker ps
 sudo docker exec edge-nginx nginx -t
 sudo docker logs -f edge-watcher
@@ -151,15 +151,37 @@ sudo docker exec edge-nginx nginx -T | grep 443
 cd /opt/edge-gateway
 sudo ./init-letsencrypt.sh
 sudo docker restart edge-nginx
+sudo docker network ls
+sudo docker inspect cgs-app | grep NetworkMode
+sudo docker inspect edge-nginx | grep NetworkMode
+sudo docker inspect cgs-app --format='{{json .NetworkSettings.Networks}}'
+sudo docker exec -it cgs-app ls -la /var/www/html
 
+# What is app_root actually pointing to on the server?
+ls -la {{ app_root }}
+# values
+# app_name: cgs
+# app_root: "/srv/apps/{{ app_name }}"
+ls -la /srv/apps/cgs
+# Confirm What Docker Thinks:
+sudo docker inspect cgs-app | grep -A20 Mounts
+grep VOLUME /srv/apps/cgs/Dockerfile
+
+sudo docker inspect cgs-app | grep -A20 Labels
+sudo docker inspect edge-watcher | grep -A10 Mounts
+sudo docker ps --filter "label=edge.enable=true"
+sudo docker inspect cgs-app | grep edge.enable
+sudo docker inspect cgs-app | grep -A20 edge-net
 
 # Execution Flow (How You’ll Use This)
 ansible-playbook playbooks/01-docker.yml
 ansible-playbook playbooks/02-edge-gateway.yml
 ansible-playbook playbooks/03-vscode.yml
-ansible-playbook playbooks/04-authelia.yml
+ansible-playbook playbooks/04-deploy-php-app.yml
+ansible-playbook playbooks/05-authelia.yml
+
 # or
-ansible-playbook -i inventory deploy_php_app.yml
+ansible-playbook -i inventory 04-deploy-php-app.yml
 ........................
 //////////////////
 If you'd like next, we can properly re-enable Docker label auto-discovery and make onboarding fully automatic.
