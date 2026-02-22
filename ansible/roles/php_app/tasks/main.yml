@@ -54,3 +54,21 @@
       edge.domain: "{{ app_domain }}"
       edge.port: "80"
     state: started
+
+# ============================================================
+# EDGE REGISTRATION (AUTO DISCOVERY - LEGACY FALLBACK)
+# ============================================================
+
+- name: Ensure edge apps directory exists
+  file:
+    path: "{{ edge_gateway_base_path }}/apps"
+    state: directory
+    mode: "0755"
+
+# ============================================================
+# FUTURE AUTOMATION HOOK (DISABLED)
+# ============================================================
+
+- name: Trigger edge rebuild
+  command: ansible-playbook playbooks/02-edge-gateway.yml
+  when: false

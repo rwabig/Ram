@@ -41,14 +41,6 @@
     state: directory
     mode: "0755"
 
-- name: Register vscode with edge gateway (fallback mode)
-  copy:
-    dest: "{{ edge_gateway_base_path }}/apps/vscode.yml"
-    content: |
-      domain: "{{ vscode_domain }}"
-      upstream: "{{ vscode_container_name }}:{{ vscode_port }}"
-  notify: Reload edge nginx
-
 # ============================================================
 # FUTURE AUTOMATION HOOK (DISABLED)
 # ============================================================
