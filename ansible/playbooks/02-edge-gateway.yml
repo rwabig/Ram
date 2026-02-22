@@ -19,7 +19,7 @@
     # Label auto-discovery may override this later.
     # Keeping this ensures safe fallback behavior.
     # --------------------------------------------------------
-    edge_gateway_apps:[]
+    edge_gateway_apps: []
 
   roles:
     - role: edge_gateway

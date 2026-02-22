@@ -52,7 +52,7 @@
     labels:
       edge.enable: "true"
       edge.domain: "{{ app_domain }}"
-      edge.port: "80"
+      edge.port: "8585"
     state: started
 
 # ============================================================
