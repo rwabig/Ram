@@ -1,12 +1,31 @@
 # ------------------------------------------------------------
-# Base Image
+# Stage 1 — Composer Vendor Builder
+# ------------------------------------------------------------
+FROM composer:2 AS vendor
+
+WORKDIR /app
+
+# Copy only composer files first (better cache)
+COPY composer.json composer.lock ./
+
+# Install production dependencies only
+RUN composer install \
+    --no-dev \
+    --prefer-dist \
+    --no-interaction \
+    --no-progress \
+    --no-scripts \
+    --optimize-autoloader
+
+# ------------------------------------------------------------
+# Stage 2 — Production PHP Runtime
 # ------------------------------------------------------------
 FROM php:8.2-apache
 
 # ------------------------------------------------------------
 # Install System Dependencies
 # ------------------------------------------------------------
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     libzip-dev \
     libicu-dev \
@@ -16,6 +35,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     git \
     curl \
+    ca-certificates \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
         pdo \
@@ -25,8 +45,9 @@ RUN apt-get update && apt-get install -y \
         zip \
         gd \
         opcache \
+    && apt-get purge -y --auto-remove \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # ------------------------------------------------------------
 # Enable Apache Modules
@@ -36,8 +57,7 @@ RUN a2enmod rewrite headers expires ssl
 # ------------------------------------------------------------
 # Apache Configuration
 # ------------------------------------------------------------
-# Set proper DocumentRoot
-ENV APACHE_DOCUMENT_ROOT /var/www/html/public
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' \
     /etc/apache2/sites-available/*.conf \
@@ -52,19 +72,26 @@ RUN echo "<Directory /var/www/html/public>\n\
 </Directory>" > /etc/apache2/conf-available/security.conf \
     && a2enconf security
 
+# Hide Apache version
+RUN echo "ServerTokens Prod\nServerSignature Off" \
+    > /etc/apache2/conf-available/hardening.conf \
+    && a2enconf hardening
+
 # ------------------------------------------------------------
 # PHP Production Configuration
 # ------------------------------------------------------------
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
-# Custom production overrides
 RUN echo "display_errors=Off" >> /usr/local/etc/php/conf.d/production.ini \
     && echo "log_errors=On" >> /usr/local/etc/php/conf.d/production.ini \
     && echo "memory_limit=256M" >> /usr/local/etc/php/conf.d/production.ini \
     && echo "upload_max_filesize=50M" >> /usr/local/etc/php/conf.d/production.ini \
     && echo "post_max_size=50M" >> /usr/local/etc/php/conf.d/production.ini \
     && echo "max_execution_time=60" >> /usr/local/etc/php/conf.d/production.ini \
-    && echo "expose_php=Off" >> /usr/local/etc/php/conf.d/production.ini
+    && echo "expose_php=Off" >> /usr/local/etc/php/conf.d/production.ini \
+    && echo "session.cookie_httponly=1" >> /usr/local/etc/php/conf.d/production.ini \
+    && echo "session.cookie_secure=1" >> /usr/local/etc/php/conf.d/production.ini \
+    && echo "session.use_strict_mode=1" >> /usr/local/etc/php/conf.d/production.ini
 
 # ------------------------------------------------------------
 # OPcache Tuning (Production)
@@ -72,29 +99,37 @@ RUN echo "display_errors=Off" >> /usr/local/etc/php/conf.d/production.ini \
 RUN echo "opcache.enable=1" >> /usr/local/etc/php/conf.d/opcache.ini \
     && echo "opcache.memory_consumption=128" >> /usr/local/etc/php/conf.d/opcache.ini \
     && echo "opcache.interned_strings_buffer=8" >> /usr/local/etc/php/conf.d/opcache.ini \
-    && echo "opcache.max_accelerated_files=10000" >> /usr/local/etc/php/conf.d/opcache.ini \
-    && echo "opcache.revalidate_freq=2" >> /usr/local/etc/php/conf.d/opcache.ini \
-    && echo "opcache.validate_timestamps=1" >> /usr/local/etc/php/conf.d/opcache.ini
+    && echo "opcache.max_accelerated_files=20000" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.validate_timestamps=0" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.revalidate_freq=0" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.save_comments=1" >> /usr/local/etc/php/conf.d/opcache.ini \
+    && echo "opcache.fast_shutdown=1" >> /usr/local/etc/php/conf.d/opcache.ini
 
 # ------------------------------------------------------------
-# Set Working Directory
+# Working Directory
 # ------------------------------------------------------------
 WORKDIR /var/www/html
 
 # ------------------------------------------------------------
-# Copy Application Source
+# Copy Application Source (without vendor first)
 # ------------------------------------------------------------
 COPY . /var/www/html
 
+# Copy vendor from builder stage
+COPY --from=vendor /app/vendor /var/www/html/vendor
+
 # ------------------------------------------------------------
-# Set Proper Permissions
+# Permissions (Least Privilege)
 # ------------------------------------------------------------
-RUN chown -R www-data:www-data /var/www/html
+RUN chown -R www-data:www-data /var/www/html \
+    && find /var/www/html -type d -exec chmod 755 {} \; \
+    && find /var/www/html -type f -exec chmod 644 {} \;
 
 # ------------------------------------------------------------
 # Healthcheck
 # ------------------------------------------------------------
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -f http://localhost/ || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -fsS http://localhost/ || exit 1
 
 # ------------------------------------------------------------
 # Expose Port (Internal Only)

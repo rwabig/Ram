@@ -172,6 +172,13 @@ sudo docker inspect edge-watcher | grep -A10 Mounts
 sudo docker ps --filter "label=edge.enable=true"
 sudo docker inspect cgs-app | grep edge.enable
 sudo docker inspect cgs-app | grep -A20 edge-net
+sudo docker inspect cgs-app | grep -A10 Labels
+sudo docker network connect edge-net cgs-app
+sudo docker inspect cgs-app
+sudo docker inspect cgs-app --format '{{json .NetworkSettings.Networks}}'
+sudo docker exec -it edge-watcher sh
+# inside edge-watcher
+docker ps --format '{{.Names}} {{.Labels}}'
 
 # Execution Flow (How You’ll Use This)
 ansible-playbook playbooks/01-docker.yml
@@ -182,6 +189,34 @@ ansible-playbook playbooks/05-authelia.yml
 
 # or
 ansible-playbook -i inventory 04-deploy-php-app.yml
+
+///////////
+
+do we still need to install composer in cgs-app through vender or to cross check if composer is there!
+
+Rebuild cleanly:
+
+docker rm -f cgs-app
+docker rmi cgs-php
+ansible-playbook playbooks/03-php-app.yml
+
+Then verify:
+
+docker exec -it cgs-app ls vendor
+
+If vendor exists → problem solved.
+
+*************
+Or manually issue cert once:
+
+docker exec -it edge-certbot certbot certonly \
+  --webroot -w /var/www/certbot \
+  -d cgs.unifypesacard.shop \
+  --email your@email.com \
+  --agree-tos --no-eff-email
+
+Then restart nginx.
+
 ........................
 //////////////////
 If you'd like next, we can properly re-enable Docker label auto-discovery and make onboarding fully automatic.
