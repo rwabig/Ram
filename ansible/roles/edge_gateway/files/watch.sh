@@ -37,12 +37,8 @@ done
 
 echo "[EDGE WATCHER] nginx ready"
 
-# ==========================================================
-# GENERATE CONFIGS (ATOMIC + SAFE)
-# ==========================================================
 generate_configs() {
 
-  # Prevent overlapping runs
   if [ -f "$LOCK_FILE" ]; then
     return
   fi
@@ -72,7 +68,6 @@ generate_configs() {
 
     CERT_PATH="/etc/letsencrypt/live/$domain/fullchain.pem"
 
-    # Check if certificate exists inside nginx container
     if docker exec "$NGINX_CONTAINER" test -f "$CERT_PATH" >/dev/null 2>&1; then
         SSL_READY=1
     else
@@ -80,10 +75,9 @@ generate_configs() {
     fi
 
 # ------------------------------------------------------------
-# WRITE HTTP BLOCK (ALWAYS)
+# HTTP BLOCK
 # ------------------------------------------------------------
 cat > "$TMP_DIR/$domain.conf" <<EOF
-{% raw %}
 # ------------------------------------------------------------
 # HTTP
 # ------------------------------------------------------------
@@ -96,18 +90,14 @@ server {
     }
 
     location / {
-{% endraw %}
 EOF
 
     if [ "$SSL_READY" -eq 1 ]; then
 cat >> "$TMP_DIR/$domain.conf" <<EOF
-{% raw %}
         return 301 https://\$host\$request_uri;
-{% endraw %}
 EOF
     else
 cat >> "$TMP_DIR/$domain.conf" <<EOF
-{% raw %}
         proxy_pass http://$name:$port;
 
         proxy_http_version 1.1;
@@ -121,23 +111,20 @@ cat >> "$TMP_DIR/$domain.conf" <<EOF
 
         proxy_read_timeout 60s;
         proxy_connect_timeout 60s;
-{% endraw %}
 EOF
     fi
 
 cat >> "$TMP_DIR/$domain.conf" <<EOF
-{% raw %}
     }
 }
-{% endraw %}
 EOF
 
 # ------------------------------------------------------------
-# WRITE HTTPS BLOCK (ONLY IF CERT EXISTS)
+# HTTPS BLOCK (ONLY IF CERT EXISTS)
 # ------------------------------------------------------------
     if [ "$SSL_READY" -eq 1 ]; then
 cat >> "$TMP_DIR/$domain.conf" <<EOF
-{% raw %}
+
 # ------------------------------------------------------------
 # HTTPS
 # ------------------------------------------------------------
@@ -167,22 +154,17 @@ server {
         proxy_connect_timeout 60s;
     }
 }
-{% endraw %}
 EOF
     fi
 
   done
 
-  # If no services found, do not wipe existing configs
   if [ "$FOUND" -eq 0 ]; then
     echo "[EDGE WATCHER] no edge-enabled containers found"
     rm -f "$LOCK_FILE"
     return
   fi
 
-  # ----------------------------------------------------------
-  # ATOMIC REPLACEMENT (only if configs changed)
-  # ----------------------------------------------------------
   if ! diff -qr "$TMP_DIR" "$SITES_DIR" >/dev/null 2>&1; then
     echo "[EDGE WATCHER] applying new configs"
 
@@ -195,9 +177,6 @@ EOF
     return
   fi
 
-  # ----------------------------------------------------------
-  # VALIDATE BEFORE RELOAD
-  # ----------------------------------------------------------
   if docker exec "$NGINX_CONTAINER" nginx -t >/dev/null 2>&1; then
       docker exec "$NGINX_CONTAINER" nginx -s reload >/dev/null 2>&1
       echo "[EDGE WATCHER] nginx reloaded"
@@ -208,15 +187,9 @@ EOF
   rm -f "$LOCK_FILE"
 }
 
-# ==========================================================
-# INITIAL SAFE GENERATION
-# ==========================================================
 sleep 3
 generate_configs
 
-# ==========================================================
-# EVENT LISTENER (DEBOUNCED)
-# ==========================================================
 docker events \
   --filter event=start \
   --filter event=die \
