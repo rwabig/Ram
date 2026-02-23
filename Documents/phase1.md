@@ -156,6 +156,11 @@ sudo docker inspect cgs-app | grep NetworkMode
 sudo docker inspect edge-nginx | grep NetworkMode
 sudo docker inspect cgs-app --format='{{json .NetworkSettings.Networks}}'
 sudo docker exec -it cgs-app ls -la /var/www/html
+docker inspect edge-watcher | grep -A 20 Mounts
+docker ps --filter label=edge.enable=true
+
+sudo docker restart edge-watcher
+sudo docker logs -f edge-watcher
 
 # What is app_root actually pointing to on the server?
 ls -la {{ app_root }}
