@@ -203,7 +203,7 @@
 # ============================================================
 
 - name: Install edge watcher script
-  template:
-    src: watch.sh.j2
+  copy:
+    src: watch.sh
     dest: "{{ edge_gateway_base_path }}/scripts/watch.sh"
     mode: "0755"
