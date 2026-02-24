@@ -9,7 +9,7 @@
     app_repo: git@github.com:rwabig/CGS.git
     app_branch: main
 
-    db_port: 5432
+    db_port: "5432"
     db_name: cgs
     db_user: cgs_user
     db_password: strong_password
