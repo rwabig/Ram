@@ -1,4 +1,5 @@
 app_container_name: "{{ app_name }}-app"
+db_container_name: "{{ app_name }}-db"
 app_image_name: "{{ app_name }}-php"
 app_root: "/srv/apps/{{ app_name }}"
 edge_gateway_base_path: "/opt/edge-gateway"
