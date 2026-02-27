@@ -1,0 +1,83 @@
+---
+# ============================================================
+# AGENT ZERO — SAFE ROLLING UPGRADE (PER USER)
+#
+# This playbook:
+#   1) Creates a timestamped backup tarball for each user's persisted data
+#      ({{ agent_zero_base_path }}/<user>/usr + .env)
+#   2) Updates the compose file to the target image tag
+#   3) Recreates containers ONE-BY-ONE (rolling) to avoid a full outage
+#
+# Run example:
+#   ansible-playbook -i ansible/inventory/production.ini \
+#     ansible/playbooks/08-agent-zero-upgrade.yml \
+#     --ask-vault-pass \
+#     -e agent_zero_target_image='agent0ai/agent-zero:latest'
+# ============================================================
+
+- name: Rolling upgrade Agent Zero (per-user)
+  hosts: agent_zero_servers
+  become: true
+
+  vars:
+    agent_zero_target_image: "{{ agent_zero_target_image | default(agent_zero_image) }}"
+    agent_zero_backup_root: "{{ agent_zero_base_path }}/backups"
+    agent_zero_backup_ts: "{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+
+  tasks:
+    - name: Assert user list is provided
+      assert:
+        that:
+          - agent_zero_users | length > 0
+        fail_msg: "agent_zero_users is empty. Define at least one user before upgrading."
+
+    - name: Ensure backup root exists
+      file:
+        path: "{{ agent_zero_backup_root }}"
+        state: directory
+        mode: "0750"
+
+    - name: Create per-user backup tarball
+      vars:
+        user_dir: "{{ agent_zero_base_path }}/{{ item.username }}"
+        backup_dir: "{{ agent_zero_backup_root }}/{{ item.username }}"
+        backup_file: "{{ backup_dir }}/a0usr-{{ agent_zero_backup_ts }}.tar.gz"
+      block:
+        - name: Ensure per-user backup directory exists
+          file:
+            path: "{{ backup_dir }}"
+            state: directory
+            mode: "0750"
+
+        - name: Backup persisted data + env
+          command: >-
+            /bin/sh -lc
+            "tar -czf '{{ backup_file }}' -C '{{ user_dir }}' usr .env"
+
+      loop: "{{ agent_zero_users }}"
+      loop_control:
+        label: "{{ item.username }}"
+
+    - name: Render compose using the target image (render-only)
+      import_role:
+        name: agent_zero
+      vars:
+        agent_zero_image: "{{ agent_zero_target_image }}"
+        agent_zero_render_only: true
+
+    - name: Pull target image
+      command: docker compose pull
+      args:
+        chdir: "{{ agent_zero_base_path }}"
+
+    - name: Rolling recreate each user container
+      command: docker compose up -d --no-deps --force-recreate agent-zero-{{ item.username }}
+      args:
+        chdir: "{{ agent_zero_base_path }}"
+      loop: "{{ agent_zero_users }}"
+      loop_control:
+        label: "{{ item.username }}"
+
+    - name: Show backup location reminder
+      debug:
+        msg: "Backups stored under {{ agent_zero_backup_root }}/<user>/a0usr-{{ agent_zero_backup_ts }}.tar.gz"

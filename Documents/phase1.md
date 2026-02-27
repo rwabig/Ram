@@ -185,6 +185,12 @@ sudo docker exec -it edge-watcher sh
 # inside edge-watcher
 docker ps --format '{{.Names}} {{.Labels}}'
 
+sudo docker rm -f edge-nginx edge-watcher edge-certbot
+sudo rm -rf /opt/edge-gateway/nginx/sites/*
+ansible-playbook playbooks/02-edge-gateway.yml
+
+sudo docker exec edge-nginx nginx -t
+
 # Execution Flow (How You’ll Use This)
 ansible-playbook playbooks/01-docker.yml
 ansible-playbook playbooks/02-edge-gateway.yml

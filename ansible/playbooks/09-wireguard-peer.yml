@@ -1,0 +1,213 @@
+---
+# ============================================================
+# WireGuard peer add/remove (one command onboarding)
+#
+# Usage examples:
+#   # Add a laptop peer (auto-pick IP)
+#   ansible-playbook -i production.ini 09-wireguard-peer.yml -e wg_peer_action=add -e wg_peer_name=laptop3 --ask-vault-pass
+#
+#   # Add with explicit VPN IP
+#   ansible-playbook -i production.ini 09-wireguard-peer.yml -e wg_peer_action=add -e wg_peer_name=laptop3 -e wg_peer_ip=10.8.0.12 --ask-vault-pass
+#
+#   # Remove a peer
+#   ansible-playbook -i production.ini 09-wireguard-peer.yml -e wg_peer_action=remove -e wg_peer_name=laptop3 --ask-vault-pass
+#
+# Notes:
+# - This playbook updates /etc/wireguard/wg0.conf directly (idempotently) and generates/fetches a ready client .conf.
+# - For multi-laptop workflows, create one peer per laptop.
+# ============================================================
+
+- hosts: wireguard_servers
+  become: true
+
+  vars:
+    wg_peer_action: "{{ wg_peer_action | default('add') }}"
+
+  tasks:
+    - name: Validate inputs
+      assert:
+        that:
+          - wg_peer_action in ['add', 'remove']
+          - (wg_peer_name is defined) and (wg_peer_name | length > 0)
+        fail_msg: "Provide -e wg_peer_action=add|remove and -e wg_peer_name=<name>"
+
+    - name: Ensure peer directories exist
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop:
+        - /etc/wireguard/peers
+        - "{{ wireguard_client_configs_dir }}"
+        - "{{ wireguard_qr_dir }}"
+      when: wg_peer_action == 'add'
+
+    - name: Pick next free peer IP if not provided
+      shell: |
+        set -euo pipefail
+        # Extract used /32 peer IPs from existing config
+        used=$(grep -E '^AllowedIPs\s*=\s*[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/32' -h /etc/wireguard/{{ wireguard_interface }}.conf 2>/dev/null \
+          | awk -F'[ =/]+' '{print $3}' \
+          | sort -u)
+
+        # Choose next free in 10.8.0.10-10.8.0.250
+        for i in $(seq 10 250); do
+          cand="10.8.0.${i}"
+          if ! echo "$used" | grep -qx "$cand"; then
+            echo "$cand"
+            exit 0
+          fi
+        done
+        echo "NO_FREE_IP" >&2
+        exit 1
+      args:
+        executable: /bin/bash
+      register: wg_next_ip
+      changed_when: false
+      when:
+        - wg_peer_action == 'add'
+        - wg_peer_ip is not defined
+
+    - name: Set resolved peer IP
+      set_fact:
+        wg_peer_ip_resolved: "{{ (wg_peer_ip | default(wg_next_ip.stdout)) | trim }}"
+      when: wg_peer_action == 'add'
+
+    - name: Generate peer private key on server if missing
+      command: /bin/sh -lc "umask 077 && wg genkey > /etc/wireguard/peers/{{ wg_peer_name }}.key"
+      args:
+        creates: "/etc/wireguard/peers/{{ wg_peer_name }}.key"
+      when: wg_peer_action == 'add'
+
+    - name: Read peer private key
+      slurp:
+        src: "/etc/wireguard/peers/{{ wg_peer_name }}.key"
+      register: wg_peer_priv
+      when: wg_peer_action == 'add'
+
+    - name: Set peer private key fact
+      set_fact:
+        wg_peer_private_key: "{{ wg_peer_priv.content | b64decode | trim }}"
+      when: wg_peer_action == 'add'
+
+    - name: Derive peer public key
+      command: /bin/sh -lc "echo '{{ wg_peer_private_key }}' | wg pubkey"
+      register: wg_peer_pub
+      changed_when: false
+      when: wg_peer_action == 'add'
+
+    - name: Read server public key
+      shell: |
+        set -euo pipefail
+        if [ -f /etc/wireguard/{{ wireguard_interface }}.key ]; then
+          cat /etc/wireguard/{{ wireguard_interface }}.key | wg pubkey
+        else
+          echo "MISSING_SERVER_KEY" >&2
+          exit 1
+        fi
+      args:
+        executable: /bin/bash
+      register: wg_server_pub
+      changed_when: false
+      when: wg_peer_action == 'add'
+
+    - name: Add peer block to WireGuard config
+      blockinfile:
+        path: "/etc/wireguard/{{ wireguard_interface }}.conf"
+        marker: "# {mark} PEER {{ wg_peer_name }}"
+        block: |
+          [Peer]
+          PublicKey = {{ wg_peer_pub.stdout | trim }}
+          AllowedIPs = {{ wg_peer_ip_resolved }}/32
+      notify: Restart WireGuard
+      when: wg_peer_action == 'add'
+
+    - name: Remove peer block from WireGuard config
+      blockinfile:
+        path: "/etc/wireguard/{{ wireguard_interface }}.conf"
+        marker: "# {mark} PEER {{ wg_peer_name }}"
+        state: absent
+      notify: Restart WireGuard
+      when: wg_peer_action == 'remove'
+
+    - name: Remove peer key and generated client artifacts
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/etc/wireguard/peers/{{ wg_peer_name }}.key"
+        - "{{ wireguard_client_configs_dir }}/{{ wg_peer_name }}.conf"
+        - "{{ wireguard_qr_dir }}/{{ wg_peer_name }}.png"
+      when: wg_peer_action == 'remove'
+
+    - name: Build peer structure for client config rendering
+      set_fact:
+        _wg_peer_struct:
+          name: "{{ wg_peer_name }}"
+          allowed_ips: "{{ wg_peer_ip_resolved }}/32"
+          private_key: "{{ wg_peer_private_key }}"
+          public_key: "{{ wg_peer_pub.stdout | trim }}"
+      when: wg_peer_action == 'add'
+
+    - name: Render WireGuard client config on server
+      copy:
+        dest: "{{ wireguard_client_configs_dir }}/{{ wg_peer_name }}.conf"
+        mode: "0600"
+        content: |
+          [Interface]
+          # {{ wg_peer_name }}
+          PrivateKey = {{ wg_peer_private_key }}
+          Address = {{ wg_peer_ip_resolved }}/32
+
+          [Peer]
+          PublicKey = {{ wg_server_pub.stdout | trim }}
+          Endpoint = {{ wireguard_endpoint }}
+          AllowedIPs = {{ wireguard_client_allowed_ips }}
+          PersistentKeepalive = {{ wireguard_client_persistent_keepalive }}
+      when: wg_peer_action == 'add'
+
+    - name: Generate QR code (PNG) for this peer
+      command: >-
+        /bin/sh -lc "qrencode -t png -o '{{ wireguard_qr_dir }}/{{ wg_peer_name }}.png' < '{{ wireguard_client_configs_dir }}/{{ wg_peer_name }}.conf'"
+      args:
+        creates: "{{ wireguard_qr_dir }}/{{ wg_peer_name }}.png"
+      when:
+        - wg_peer_action == 'add'
+        - wireguard_generate_qr_codes | bool
+
+    - name: Ensure local artifacts directories exist
+      delegate_to: localhost
+      become: false
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop:
+        - "{{ wireguard_local_client_configs_dir }}"
+        - "{{ wireguard_local_qr_dir }}"
+      when: wg_peer_action == 'add'
+
+    - name: Fetch client config to controller
+      fetch:
+        src: "{{ wireguard_client_configs_dir }}/{{ wg_peer_name }}.conf"
+        dest: "{{ wireguard_local_client_configs_dir }}/{{ wg_peer_name }}.conf"
+        flat: true
+      when:
+        - wg_peer_action == 'add'
+        - wireguard_fetch_client_configs | bool
+
+    - name: Fetch QR code to controller
+      fetch:
+        src: "{{ wireguard_qr_dir }}/{{ wg_peer_name }}.png"
+        dest: "{{ wireguard_local_qr_dir }}/{{ wg_peer_name }}.png"
+        flat: true
+      when:
+        - wg_peer_action == 'add'
+        - wireguard_generate_qr_codes | bool
+        - wireguard_fetch_qr_codes | bool
+
+  handlers:
+    - name: Restart WireGuard
+      systemd:
+        name: "wg-quick@{{ wireguard_interface }}"
+        state: restarted

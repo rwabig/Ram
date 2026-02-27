@@ -1,0 +1,42 @@
+---
+# ============================================================
+# AUTHELIA — DEFAULTS
+# ============================================================
+
+authelia_base_path: "/opt/authelia"
+authelia_network: "{{ edge_gateway_network | default('edge-net') }}"
+
+# Public/auth portal domain (must resolve to your edge gateway)
+authelia_domain: "auth.example.com"
+
+authelia_image: "authelia/authelia:latest"
+authelia_redis_image: "redis:7-alpine"
+
+authelia_port: 9091
+
+# ============================================================
+# SECRETS (store in ansible-vault in real deployments)
+# ============================================================
+authelia_jwt_secret: "CHANGE_ME_JWT_SECRET"
+authelia_session_secret: "CHANGE_ME_SESSION_SECRET"
+authelia_storage_encryption_key: "CHANGE_ME_STORAGE_KEY_32_CHARS_MIN"
+
+# ============================================================
+# USERS (passwords should be pre-hashed for Authelia)
+# Generate hashes with:
+#   docker run --rm authelia/authelia:latest authelia crypto hash generate argon2 --password 'YourPass'
+# ============================================================
+authelia_users: []
+# Example:
+# authelia_users:
+#   - username: alice
+#     displayname: Alice
+#     email: alice@example.com
+#     password_hash: "$argon2id$..."
+#     groups: ["a0_users"]
+
+# Default access control policy: deny (recommended)
+authelia_default_policy: "deny"
+
+# Domains that should require login. If empty, you can rely on per-service edge.auth labels.
+authelia_protected_domains: []

@@ -1,0 +1,265 @@
+---
+# ============================================================
+# WIREGUARD SERVER
+# ============================================================
+
+- name: Install WireGuard
+  apt:
+    name:
+      - wireguard
+      - qrencode
+    state: present
+    update_cache: true
+
+- name: Enable IPv4 forwarding
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    state: present
+    reload: true
+
+- name: Ensure WireGuard directory exists
+  file:
+    path: /etc/wireguard
+    state: directory
+    mode: "0700"
+
+- name: Generate WireGuard server private key if missing
+  command: /bin/sh -lc "umask 077 && wg genkey > /etc/wireguard/{{ wireguard_interface }}.key"
+  args:
+    creates: "/etc/wireguard/{{ wireguard_interface }}.key"
+
+- name: Read WireGuard server private key
+  slurp:
+    src: "/etc/wireguard/{{ wireguard_interface }}.key"
+  register: wg_priv
+
+- name: Set WireGuard server private key fact
+  set_fact:
+    wireguard_server_private_key: "{{ wg_priv.content | b64decode | trim }}"
+
+- name: Derive WireGuard server public key
+  command: /bin/sh -lc "echo '{{ wireguard_server_private_key }}' | wg pubkey"
+  register: wg_pub
+  changed_when: false
+
+- name: Set WireGuard server public key fact
+  set_fact:
+    wireguard_server_public_key: "{{ wg_pub.stdout | trim }}"
+
+# ============================================================
+# PEER KEY MANAGEMENT (optional)
+# ============================================================
+
+- name: Ensure WireGuard peers directory exists
+  file:
+    path: /etc/wireguard/peers
+    state: directory
+    mode: "0700"
+
+- name: Build resolved peer list (generate keys when missing)
+  vars:
+    peer_key_path: "/etc/wireguard/peers/{{ item.name }}.key"
+  block:
+    - name: Generate peer private key on server if missing and not provided
+      command: /bin/sh -lc "umask 077 && wg genkey > {{ peer_key_path }}"
+      args:
+        creates: "{{ peer_key_path }}"
+      when:
+        - (item.private_key is not defined) or (item.private_key | length == 0)
+
+    - name: Read peer private key from file when not provided
+      slurp:
+        src: "{{ peer_key_path }}"
+      register: peer_priv_file
+      when:
+        - (item.private_key is not defined) or (item.private_key | length == 0)
+
+    - name: Set peer private key fact for this item
+      set_fact:
+        _peer_private_key: "{{ (item.private_key | default('')) | trim if (item.private_key is defined and (item.private_key | length > 0)) else (peer_priv_file.content | b64decode | trim) }}"
+
+    - name: Compute peer public key when not provided
+      command: /bin/sh -lc "echo '{{ _peer_private_key }}' | wg pubkey"
+      register: peer_pub
+      changed_when: false
+      when:
+        - (item.public_key is not defined) or (item.public_key | length == 0)
+
+    - name: Append resolved peer
+      set_fact:
+        wireguard_peers_resolved: "{{ (wireguard_peers_resolved | default([])) + [ {
+          'name': item.name,
+          'allowed_ips': item.allowed_ips,
+          'private_key': _peer_private_key,
+          'public_key': (item.public_key | default('') | trim) if (item.public_key is defined and (item.public_key | length > 0)) else (peer_pub.stdout | trim)
+        } ] }}"
+  loop: "{{ wireguard_peers }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Render WireGuard config
+  template:
+    src: wg0.conf.j2
+    dest: "/etc/wireguard/{{ wireguard_interface }}.conf"
+    mode: "0600"
+  notify: Restart WireGuard
+
+- name: Enable and start WireGuard
+  systemd:
+    name: "wg-quick@{{ wireguard_interface }}"
+    enabled: true
+    state: started
+
+# ============================================================
+# FIREWALL
+# ============================================================
+
+- name: Ensure UFW is installed
+  apt:
+    name: ufw
+    state: present
+    update_cache: true
+  when: wireguard_manage_ufw | bool
+
+- name: Allow WireGuard UDP port
+  ufw:
+    rule: allow
+    port: "{{ wireguard_port }}"
+    proto: udp
+  when: wireguard_manage_ufw | bool
+
+- name: Allow HTTP (80) public (needed for Let's Encrypt HTTP-01)
+  ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+  when:
+    - wireguard_manage_ufw | bool
+    - wireguard_allow_http_public | bool
+
+- name: Restrict HTTPS (443) to VPN subnet
+  block:
+    - name: Deny public HTTPS
+      ufw:
+        rule: deny
+        port: "443"
+        proto: tcp
+
+    - name: Allow HTTPS from VPN subnet
+      ufw:
+        rule: allow
+        from_ip: "{{ wireguard_network_cidr }}"
+        port: "443"
+        proto: tcp
+  when:
+    - wireguard_manage_ufw | bool
+    - wireguard_restrict_https_to_vpn | bool
+
+- name: Restrict SSH (22) to VPN subnet
+  block:
+    - name: Deny public SSH
+      ufw:
+        rule: deny
+        port: "22"
+        proto: tcp
+
+    - name: Allow SSH from VPN subnet
+      ufw:
+        rule: allow
+        from_ip: "{{ wireguard_network_cidr }}"
+        port: "22"
+        proto: tcp
+  when:
+    - wireguard_manage_ufw | bool
+    - wireguard_restrict_ssh_to_vpn | bool
+
+# ============================================================
+# CLIENT CONFIG GENERATION
+# ============================================================
+
+- name: Ensure client config output directory exists on server
+  file:
+    path: "{{ wireguard_client_configs_dir }}"
+    state: directory
+    mode: "0700"
+  when: wireguard_generate_client_configs | bool
+
+- name: Render WireGuard client configs on server
+  template:
+    src: client.conf.j2
+    dest: "{{ wireguard_client_configs_dir }}/{{ item.name }}.conf"
+    mode: "0600"
+  loop: "{{ wireguard_peers_resolved | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: wireguard_generate_client_configs | bool
+
+- name: Ensure QR output directory exists on server
+  file:
+    path: "{{ wireguard_qr_dir }}"
+    state: directory
+    mode: "0700"
+  when:
+    - wireguard_generate_client_configs | bool
+    - wireguard_generate_qr_codes | bool
+
+- name: Generate QR codes (PNG) for client configs on server
+  command: >-
+    /bin/sh -lc "qrencode -t png -o '{{ wireguard_qr_dir }}/{{ item.name }}.png' < '{{ wireguard_client_configs_dir }}/{{ item.name }}.conf'"
+  args:
+    creates: "{{ wireguard_qr_dir }}/{{ item.name }}.png"
+  loop: "{{ wireguard_peers_resolved | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - wireguard_generate_client_configs | bool
+    - wireguard_generate_qr_codes | bool
+
+- name: Ensure local artifacts directory exists
+  delegate_to: localhost
+  become: false
+  file:
+    path: "{{ wireguard_local_client_configs_dir }}"
+    state: directory
+    mode: "0700"
+  when:
+    - wireguard_generate_client_configs | bool
+    - wireguard_fetch_client_configs | bool
+
+- name: Ensure local QR artifacts directory exists
+  delegate_to: localhost
+  become: false
+  file:
+    path: "{{ wireguard_local_qr_dir }}"
+    state: directory
+    mode: "0700"
+  when:
+    - wireguard_generate_client_configs | bool
+    - wireguard_generate_qr_codes | bool
+    - wireguard_fetch_qr_codes | bool
+
+- name: Fetch WireGuard client configs to controller
+  fetch:
+    src: "{{ wireguard_client_configs_dir }}/{{ item.name }}.conf"
+    dest: "{{ wireguard_local_client_configs_dir }}/{{ item.name }}.conf"
+    flat: true
+  loop: "{{ wireguard_peers_resolved | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - wireguard_generate_client_configs | bool
+    - wireguard_fetch_client_configs | bool
+
+- name: Fetch WireGuard QR codes to controller
+  fetch:
+    src: "{{ wireguard_qr_dir }}/{{ item.name }}.png"
+    dest: "{{ wireguard_local_qr_dir }}/{{ item.name }}.png"
+    flat: true
+  loop: "{{ wireguard_peers_resolved | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - wireguard_generate_client_configs | bool
+    - wireguard_generate_qr_codes | bool
+    - wireguard_fetch_qr_codes | bool

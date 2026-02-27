@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+{% for user in agent_zero_users %}
+  agent-zero-{{ user.username }}:
+    image: {{ agent_zero_image }}
+    container_name: agent-zero-{{ user.username }}
+    restart: unless-stopped
+
+    volumes:
+      # Persisted user data (recommended mount target: /a0/usr)
+      - "{{ agent_zero_base_path }}/{{ user.username }}/usr:/a0/usr"
+      # Per-user .env (matches Agent Zero VPS guide pattern)
+      - "{{ agent_zero_base_path }}/{{ user.username }}/.env:/a0/.env:ro"
+
+    networks:
+      - {{ agent_zero_network }}
+
+    labels:
+      edge.enable: "true"
+      edge.domain: "{{ user.domain }}"
+      edge.port: "80"
+{% if agent_zero_enable_edge_auth | bool %}
+      edge.auth: "authelia"
+{% endif %}
+
+{% endfor %}
+
+networks:
+  {{ agent_zero_network }}:
+    external: true

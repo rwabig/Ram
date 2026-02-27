@@ -1,0 +1,10 @@
+---
+- name: Restart Authelia stack
+  command: docker compose up -d --force-recreate
+  args:
+    chdir: "{{ authelia_base_path }}"
+
+- name: Restart Edge Watcher
+  command: docker restart edge-watcher
+  register: restart_edge_watcher
+  failed_when: false

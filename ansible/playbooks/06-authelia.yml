@@ -1,0 +1,11 @@
+---
+# ============================================================
+# AUTHELIA (SSO/MFA) + EDGE GATEWAY INTEGRATION
+# ============================================================
+
+- name: Deploy Authelia and integrate with Edge Gateway
+  hosts: authelia_servers
+  become: true
+
+  roles:
+    - role: authelia

@@ -1,0 +1,55 @@
+---
+# ============================================================
+# AGENT ZERO — MULTI-TENANT DEPLOYMENT
+# ============================================================
+
+- name: Assert user list is provided
+  assert:
+    that:
+      - agent_zero_users | length > 0
+    fail_msg: "agent_zero_users is empty. Define at least one user."
+
+- name: Ensure base directory exists
+  file:
+    path: "{{ agent_zero_base_path }}"
+    state: directory
+    mode: "0755"
+
+- name: Ensure edge network exists
+  community.docker.docker_network:
+    name: "{{ agent_zero_network }}"
+
+- name: Create per-user directories
+  file:
+    path: "{{ agent_zero_base_path }}/{{ item.username }}/usr"
+    state: directory
+    mode: "0755"
+  loop: "{{ agent_zero_users }}"
+
+- name: Render per-user .env files
+  template:
+    src: user.env.j2
+    dest: "{{ agent_zero_base_path }}/{{ item.username }}/.env"
+    mode: "0600"
+  loop: "{{ agent_zero_users }}"
+  loop_control:
+    loop_var: user
+  notify: Restart Agent Zero stack
+
+- name: Render docker-compose.yml
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ agent_zero_base_path }}/docker-compose.yml"
+    mode: "0644"
+  notify: Restart Agent Zero stack
+
+- name: Pull images
+  command: docker compose pull
+  args:
+    chdir: "{{ agent_zero_base_path }}"
+
+- name: Start Agent Zero stack
+  command: docker compose up -d
+  args:
+    chdir: "{{ agent_zero_base_path }}"
+  when: not (agent_zero_render_only | bool)

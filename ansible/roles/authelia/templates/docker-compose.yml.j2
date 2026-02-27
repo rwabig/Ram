@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  authelia:
+    image: {{ authelia_image }}
+    container_name: authelia
+    restart: unless-stopped
+
+    volumes:
+      - ./config:/config
+      - ./data:/data
+
+    environment:
+      - TZ=Africa/Dar_es_Salaam
+
+    networks:
+      - {{ authelia_network }}
+
+    labels:
+      edge.enable: "true"
+      edge.domain: "{{ authelia_domain }}"
+      edge.port: "{{ authelia_port }}"
+      edge.auth: "false"
+
+  redis:
+    image: {{ authelia_redis_image }}
+    container_name: authelia-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      - {{ authelia_network }}
+
+networks:
+  {{ authelia_network }}:
+    external: true

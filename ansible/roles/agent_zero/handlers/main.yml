@@ -1,0 +1,6 @@
+---
+- name: Restart Agent Zero stack
+  command: docker compose up -d --force-recreate
+  args:
+    chdir: "{{ agent_zero_base_path }}"
+  when: not (agent_zero_render_only | bool)

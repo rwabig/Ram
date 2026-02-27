@@ -1,0 +1,56 @@
+---
+# ============================================================
+# AUTHELIA DEPLOYMENT
+# ============================================================
+
+- name: Ensure base directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ authelia_base_path }}"
+    - "{{ authelia_base_path }}/config"
+    - "{{ authelia_base_path }}/data"
+
+- name: Ensure edge network exists
+  community.docker.docker_network:
+    name: "{{ authelia_network }}"
+
+- name: Render Authelia configuration.yml
+  template:
+    src: configuration.yml.j2
+    dest: "{{ authelia_base_path }}/config/configuration.yml"
+    mode: "0644"
+  notify: Restart Authelia stack
+
+- name: Render Authelia users_database.yml
+  template:
+    src: users_database.yml.j2
+    dest: "{{ authelia_base_path }}/config/users_database.yml"
+    mode: "0644"
+  notify: Restart Authelia stack
+
+- name: Render Authelia docker-compose.yml
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ authelia_base_path }}/docker-compose.yml"
+    mode: "0644"
+  notify: Restart Authelia stack
+
+- name: Start Authelia stack
+  command: docker compose up -d
+  args:
+    chdir: "{{ authelia_base_path }}"
+
+# ============================================================
+# EDGE GATEWAY INTEGRATION
+# Create auth_domain file consumed by the Edge Watcher.
+# ============================================================
+
+- name: Write Authelia auth domain for Edge Watcher
+  copy:
+    content: "{{ authelia_domain }}\n"
+    dest: "{{ edge_gateway_base_path | default('/opt/edge-gateway') }}/scripts/auth_domain"
+    mode: "0644"
+  notify: Restart Edge Watcher

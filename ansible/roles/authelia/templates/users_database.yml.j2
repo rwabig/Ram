@@ -1,0 +1,12 @@
+---
+users:
+{% for u in authelia_users %}
+  {{ u.username }}:
+    displayname: "{{ u.displayname | default(u.username) }}"
+    password: "{{ u.password_hash }}"
+    email: "{{ u.email | default(u.username ~ '@example.com') }}"
+    groups:
+{% for g in (u.groups | default(['a0_users'])) %}
+      - "{{ g }}"
+{% endfor %}
+{% endfor %}

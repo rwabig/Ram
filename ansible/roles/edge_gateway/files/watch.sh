@@ -7,29 +7,31 @@ SITES_DIR=/sites
 TMP_DIR=/tmp/edge-sites
 LOCK_FILE=/tmp/edge-lock
 NGINX_CONTAINER=edge-nginx
+
 EDGE_ENABLE_LABEL="edge.enable"
 EDGE_DOMAIN_LABEL="edge.domain"
 EDGE_PORT_LABEL="edge.port"
+EDGE_AUTH_LABEL="edge.auth"
 
-# ==========================================================
-# WAIT FOR DOCKER SOCKET
-# ==========================================================
+# Optional Authelia integration:
+# - create /scripts/auth_domain (mounted from edge gateway host) with value like: auth.example.com
+# - label services with: edge.auth=true  (or edge.auth=authelia)
+AUTH_DOMAIN_FILE="/scripts/auth_domain"
+AUTH_DOMAIN=""
+if [ -f "$AUTH_DOMAIN_FILE" ]; then
+  AUTH_DOMAIN=$(cat "$AUTH_DOMAIN_FILE" 2>/dev/null | tr -d '\n' || true)
+fi
+
 echo "[EDGE WATCHER] waiting for docker socket..."
 while [ ! -S /var/run/docker.sock ]; do
   sleep 1
 done
 
-# ==========================================================
-# WAIT FOR NGINX CONTAINER
-# ==========================================================
 echo "[EDGE WATCHER] waiting for nginx container..."
 while ! docker inspect "$NGINX_CONTAINER" >/dev/null 2>&1; do
   sleep 1
 done
 
-# ==========================================================
-# WAIT UNTIL NGINX IS READY
-# ==========================================================
 echo "[EDGE WATCHER] waiting for nginx readiness..."
 until docker exec "$NGINX_CONTAINER" nginx -t >/dev/null 2>&1; do
   sleep 2
@@ -58,6 +60,7 @@ generate_configs() {
 
     domain=$(docker inspect -f '{{ index .Config.Labels "'"$EDGE_DOMAIN_LABEL"'" }}' "$id" 2>/dev/null || true)
     port=$(docker inspect -f '{{ index .Config.Labels "'"$EDGE_PORT_LABEL"'" }}' "$id" 2>/dev/null || true)
+    auth=$(docker inspect -f '{{ index .Config.Labels "'"$EDGE_AUTH_LABEL"'" }}' "$id" 2>/dev/null || true)
     name=$(docker inspect -f '{{ .Name }}' "$id" 2>/dev/null | sed 's#^/##')
 
     [ -n "${domain:-}" ] || continue
@@ -74,9 +77,16 @@ generate_configs() {
         SSL_READY=0
     fi
 
-# ------------------------------------------------------------
-# HTTP BLOCK
-# ------------------------------------------------------------
+    AUTH_ENABLED=0
+    if [ -n "${AUTH_DOMAIN:-}" ]; then
+      if [ "${auth:-}" = "true" ] || [ "${auth:-}" = "authelia" ]; then
+        AUTH_ENABLED=1
+      fi
+    fi
+
+    # ------------------------------------------------------------
+    # HTTP BLOCK
+    # ------------------------------------------------------------
 cat > "$TMP_DIR/$domain.conf" <<EOF
 # ------------------------------------------------------------
 # HTTP
@@ -97,6 +107,13 @@ cat >> "$TMP_DIR/$domain.conf" <<EOF
         return 301 https://\$host\$request_uri;
 EOF
     else
+      if [ "$AUTH_ENABLED" -eq 1 ]; then
+cat >> "$TMP_DIR/$domain.conf" <<EOF
+        auth_request /authelia;
+        error_page 401 =302 https://$AUTH_DOMAIN/?rd=\$scheme://\$host\$request_uri;
+EOF
+      fi
+
 cat >> "$TMP_DIR/$domain.conf" <<EOF
         proxy_pass http://$name:$port;
 
@@ -109,19 +126,41 @@ cat >> "$TMP_DIR/$domain.conf" <<EOF
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
 
-        proxy_read_timeout 60s;
+        proxy_read_timeout 3600s;
         proxy_connect_timeout 60s;
 EOF
     fi
 
 cat >> "$TMP_DIR/$domain.conf" <<EOF
     }
+EOF
+
+    if [ "$AUTH_ENABLED" -eq 1 ]; then
+cat >> "$TMP_DIR/$domain.conf" <<EOF
+
+    # Authelia verification endpoint (internal)
+    location = /authelia {
+        internal;
+        proxy_pass http://authelia:9091/api/verify;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-URL \$scheme://\$host\$request_uri;
+        proxy_set_header X-Forwarded-Method \$request_method;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$host;
+        proxy_set_header X-Forwarded-Uri \$request_uri;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+EOF
+    fi
+
+cat >> "$TMP_DIR/$domain.conf" <<EOF
 }
 EOF
 
-# ------------------------------------------------------------
-# HTTPS BLOCK (ONLY IF CERT EXISTS)
-# ------------------------------------------------------------
+    # ------------------------------------------------------------
+    # HTTPS BLOCK (ONLY IF CERT EXISTS)
+    # ------------------------------------------------------------
     if [ "$SSL_READY" -eq 1 ]; then
 cat >> "$TMP_DIR/$domain.conf" <<EOF
 
@@ -139,6 +178,16 @@ server {
     ssl_prefer_server_ciphers on;
 
     location / {
+EOF
+
+      if [ "$AUTH_ENABLED" -eq 1 ]; then
+cat >> "$TMP_DIR/$domain.conf" <<EOF
+        auth_request /authelia;
+        error_page 401 =302 https://$AUTH_DOMAIN/?rd=\$scheme://\$host\$request_uri;
+EOF
+      fi
+
+cat >> "$TMP_DIR/$domain.conf" <<EOF
         proxy_pass http://$name:$port;
 
         proxy_http_version 1.1;
@@ -150,9 +199,30 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
 
-        proxy_read_timeout 60s;
+        proxy_read_timeout 3600s;
         proxy_connect_timeout 60s;
     }
+EOF
+
+      if [ "$AUTH_ENABLED" -eq 1 ]; then
+cat >> "$TMP_DIR/$domain.conf" <<EOF
+
+    location = /authelia {
+        internal;
+        proxy_pass http://authelia:9091/api/verify;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-URL \$scheme://\$host\$request_uri;
+        proxy_set_header X-Forwarded-Method \$request_method;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$host;
+        proxy_set_header X-Forwarded-Uri \$request_uri;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    }
+EOF
+      fi
+
+cat >> "$TMP_DIR/$domain.conf" <<EOF
 }
 EOF
     fi

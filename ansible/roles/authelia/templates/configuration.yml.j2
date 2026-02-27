@@ -1,0 +1,47 @@
+---
+theme: dark
+default_redirection_url: "https://{{ authelia_domain }}"
+
+server:
+  host: 0.0.0.0
+  port: {{ authelia_port }}
+
+log:
+  level: info
+
+jwt_secret: "{{ authelia_jwt_secret }}"
+
+authentication_backend:
+  file:
+    path: /config/users_database.yml
+    password:
+      algorithm: argon2id
+
+access_control:
+  default_policy: {{ authelia_default_policy }}
+  rules:
+{% if authelia_protected_domains | length > 0 %}
+    - domain:
+{% for d in authelia_protected_domains %}
+        - "{{ d }}"
+{% endfor %}
+      policy: one_factor
+{% endif %}
+
+session:
+  name: authelia_session
+  secret: "{{ authelia_session_secret }}"
+  expiration: 1h
+  inactivity: 5m
+  redis:
+    host: authelia-redis
+    port: 6379
+
+storage:
+  encryption_key: "{{ authelia_storage_encryption_key }}"
+  local:
+    path: /config/db.sqlite3
+
+notifier:
+  filesystem:
+    filename: /config/notification.txt

@@ -1,0 +1,130 @@
+---
+# ============================================================
+# AGENT ZERO — RESTORE FROM BACKUP (PER USER)
+#
+# Restores a user's persisted Agent Zero data from a tar.gz created by
+# 08-agent-zero-upgrade.yml (or equivalent).
+#
+# Run examples:
+#   # Restore latest backup for user alice
+#   ansible-playbook -i ansible/inventory/production.ini \
+#     ansible/playbooks/10-agent-zero-restore.yml \
+#     --ask-vault-pass -e a0_restore_user=alice
+#
+#   # Restore a specific backup file
+#   ansible-playbook -i ansible/inventory/production.ini \
+#     ansible/playbooks/10-agent-zero-restore.yml \
+#     --ask-vault-pass -e a0_restore_user=alice -e a0_restore_backup='a0usr-20260228-120000.tar.gz'
+#
+# Notes:
+# - The restore process stops only the target user's container.
+# - A safety snapshot of current data is created before restore.
+# ============================================================
+
+- name: Restore Agent Zero user from backup
+  hosts: agent_zero_servers
+  become: true
+
+  vars:
+    a0_restore_user: "{{ a0_restore_user | default('') }}"
+    a0_restore_backup: "{{ a0_restore_backup | default('') }}"
+    a0_backup_root: "{{ agent_zero_base_path }}/backups"
+    a0_safety_ts: "{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
+
+  tasks:
+    - name: Validate inputs
+      assert:
+        that:
+          - a0_restore_user | length > 0
+        fail_msg: "Provide -e a0_restore_user=<username>"
+
+    - name: Assert user exists in agent_zero_users
+      assert:
+        that:
+          - a0_restore_user in (agent_zero_users | map(attribute='username') | list)
+        fail_msg: "User {{ a0_restore_user }} not found in agent_zero_users"
+
+    - name: Resolve backup file path (specific or latest)
+      shell: |
+        set -euo pipefail
+        user_dir='{{ a0_backup_root }}/{{ a0_restore_user }}'
+        if [ ! -d "$user_dir" ]; then
+          echo "NO_BACKUP_DIR" >&2
+          exit 2
+        fi
+
+        if [ -n '{{ a0_restore_backup | trim }}' ]; then
+          # If user provided a path, accept it; else assume filename under user's backup dir
+          if [ -f '{{ a0_restore_backup | trim }}' ]; then
+            echo '{{ a0_restore_backup | trim }}'
+            exit 0
+          fi
+          cand="$user_dir/{{ a0_restore_backup | trim }}"
+          if [ -f "$cand" ]; then
+            echo "$cand"
+            exit 0
+          fi
+          echo "BACKUP_NOT_FOUND" >&2
+          exit 3
+        fi
+
+        # Pick latest tar.gz
+        latest=$(ls -1t "$user_dir"/*.tar.gz 2>/dev/null | head -n 1 || true)
+        if [ -z "$latest" ]; then
+          echo "NO_BACKUPS" >&2
+          exit 4
+        fi
+        echo "$latest"
+      args:
+        executable: /bin/bash
+      register: a0_backup_resolved
+      changed_when: false
+
+    - name: Set restore backup path
+      set_fact:
+        a0_restore_backup_path: "{{ a0_backup_resolved.stdout | trim }}"
+
+    - name: Stop target user container
+      command: docker compose stop agent-zero-{{ a0_restore_user }}
+      args:
+        chdir: "{{ agent_zero_base_path }}"
+
+    - name: Create safety snapshot of current data before restore
+      vars:
+        user_dir: "{{ agent_zero_base_path }}/{{ a0_restore_user }}"
+        safety_dir: "{{ a0_backup_root }}/{{ a0_restore_user }}"
+        safety_file: "{{ safety_dir }}/safety-before-restore-{{ a0_safety_ts }}.tar.gz"
+      block:
+        - name: Ensure safety directory exists
+          file:
+            path: "{{ safety_dir }}"
+            state: directory
+            mode: "0750"
+
+        - name: Create safety tarball
+          command: >-
+            /bin/sh -lc
+            "tar -czf '{{ safety_file }}' -C '{{ user_dir }}' usr .env"
+
+    - name: Restore backup (extract into user directory)
+      vars:
+        user_dir: "{{ agent_zero_base_path }}/{{ a0_restore_user }}"
+      command: >-
+        /bin/sh -lc
+        "tar -xzf '{{ a0_restore_backup_path }}' -C '{{ user_dir }}'"
+
+    - name: Ensure permissions on user directory
+      file:
+        path: "{{ agent_zero_base_path }}/{{ a0_restore_user }}"
+        state: directory
+        recurse: true
+        mode: "u=rwX,g=rX,o="
+
+    - name: Start (recreate) target user container
+      command: docker compose up -d --no-deps --force-recreate agent-zero-{{ a0_restore_user }}
+      args:
+        chdir: "{{ agent_zero_base_path }}"
+
+    - name: Show restore summary
+      debug:
+        msg: "Restored {{ a0_restore_user }} from {{ a0_restore_backup_path }} (safety snapshot saved under {{ a0_backup_root }}/{{ a0_restore_user }})"

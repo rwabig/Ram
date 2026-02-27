@@ -1,0 +1,25 @@
+---
+# ============================================================
+# AGENT ZERO — MULTI-TENANT DEFAULTS
+# ============================================================
+
+agent_zero_base_path: "/opt/agent-zero"
+agent_zero_network: "{{ edge_gateway_network | default('edge-net') }}"
+
+agent_zero_image: "agent0ai/agent-zero:latest"
+
+# When true, only render files + pull images; do NOT start/restart the stack.
+# Used by the upgrade playbook to perform rolling upgrades per user.
+agent_zero_render_only: false
+
+# Enable Authelia protection via edge.auth label
+agent_zero_enable_edge_auth: true
+
+# Users (one container per user)
+agent_zero_users: []
+# Example:
+# agent_zero_users:
+#   - username: alice
+#     domain: alice.a0.example.com
+#     auth_login: alice
+#     auth_password: "StrongPass!"   # store in ansible-vault

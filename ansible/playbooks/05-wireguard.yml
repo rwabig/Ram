@@ -1,0 +1,11 @@
+---
+# ============================================================
+# WIREGUARD VPN (SERVER)
+# ============================================================
+
+- name: Deploy WireGuard Server
+  hosts: wireguard_servers
+  become: true
+
+  roles:
+    - role: wireguard

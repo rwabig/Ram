@@ -1,0 +1,80 @@
+---
+# ============================================================
+# WIREGUARD — DEFAULTS
+# ============================================================
+
+wireguard_interface: "wg0"
+wireguard_port: 51820
+
+# VPN subnet for peers
+wireguard_address: "10.8.0.1/24"
+wireguard_network_cidr: "10.8.0.0/24"
+
+# Public endpoint clients connect to (IP or DNS name)
+wireguard_endpoint: "CHANGE_ME_VPN_ENDPOINT"
+
+# Optional: if you want clients to route all traffic through VPN
+wireguard_client_allowed_ips: "10.8.0.0/24"
+
+# ============================================================
+# PEERS
+# Provide each laptop as its own peer (best for switching devices)
+# ============================================================
+wireguard_peers: []
+# Example:
+# wireguard_peers:
+#   - name: laptop_student_1
+#     public_key: "..."
+#     allowed_ips: "10.8.0.10/32"
+#   - name: laptop_student_2
+#     public_key: "..."
+#     allowed_ips: "10.8.0.11/32"
+
+# ============================================================
+# FIREWALL (UFW)
+# ============================================================
+wireguard_manage_ufw: true
+
+# If true, allow HTTPS (443) only from VPN subnet.
+# NOTE: If you use Let's Encrypt HTTP-01, keep port 80 public.
+wireguard_restrict_https_to_vpn: true
+wireguard_allow_http_public: true
+
+# If true, restrict SSH (22) to VPN subnet (useful once WireGuard is working).
+# NOTE: If you enable this, make sure you can reach the server over WireGuard
+# before re-running the playbook, otherwise you can lock yourself out.
+wireguard_restrict_ssh_to_vpn: false
+
+# ============================================================
+# CLIENT CONFIG GENERATION
+# Generates ready-to-import configs for each peer.
+# If a peer does not provide public_key, this role will generate
+# a keypair on the server and include it automatically.
+# ============================================================
+wireguard_generate_client_configs: true
+wireguard_client_persistent_keepalive: 25
+
+# Where to write client configs on the server
+wireguard_client_configs_dir: "/etc/wireguard/client-configs"
+
+# Fetch the generated client configs back to the Ansible controller
+wireguard_fetch_client_configs: true
+
+# Local output directory (relative to repository root when running playbooks)
+wireguard_local_client_configs_dir: "{{ playbook_dir }}/../artifacts/wireguard"
+
+# ============================================================
+# OPTIONAL: QR GENERATION (mobile peers)
+# Generates QR codes for each client config (useful for phones/tablets).
+# Requires qrencode (installed by role).
+# ============================================================
+wireguard_generate_qr_codes: false
+
+# Output directory on the server for QR codes
+wireguard_qr_dir: "/etc/wireguard/client-qr"
+
+# Fetch generated QR images to controller
+wireguard_fetch_qr_codes: true
+
+# Local output directory for QR images
+wireguard_local_qr_dir: "{{ playbook_dir }}/../artifacts/wireguard-qr"

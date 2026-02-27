@@ -1,0 +1,11 @@
+---
+# ============================================================
+# AGENT ZERO (MULTI-TENANT: ONE CONTAINER PER USER)
+# ============================================================
+
+- name: Deploy Agent Zero (per-user containers)
+  hosts: agent_zero_servers
+  become: true
+
+  roles:
+    - role: agent_zero
