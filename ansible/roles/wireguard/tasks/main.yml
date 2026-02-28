@@ -60,40 +60,7 @@
 - name: Build resolved peer list (generate keys when missing)
   vars:
     peer_key_path: "/etc/wireguard/peers/{{ item.name }}.key"
-  block:
-    - name: Generate peer private key on server if missing and not provided
-      command: /bin/sh -lc "umask 077 && wg genkey > {{ peer_key_path }}"
-      args:
-        creates: "{{ peer_key_path }}"
-      when:
-        - (item.private_key is not defined) or (item.private_key | length == 0)
-
-    - name: Read peer private key from file when not provided
-      slurp:
-        src: "{{ peer_key_path }}"
-      register: peer_priv_file
-      when:
-        - (item.private_key is not defined) or (item.private_key | length == 0)
-
-    - name: Set peer private key fact for this item
-      set_fact:
-        _peer_private_key: "{{ (item.private_key | default('')) | trim if (item.private_key is defined and (item.private_key | length > 0)) else (peer_priv_file.content | b64decode | trim) }}"
-
-    - name: Compute peer public key when not provided
-      command: /bin/sh -lc "echo '{{ _peer_private_key }}' | wg pubkey"
-      register: peer_pub
-      changed_when: false
-      when:
-        - (item.public_key is not defined) or (item.public_key | length == 0)
-
-    - name: Append resolved peer
-      set_fact:
-        wireguard_peers_resolved: "{{ (wireguard_peers_resolved | default([])) + [ {
-          'name': item.name,
-          'allowed_ips': item.allowed_ips,
-          'private_key': _peer_private_key,
-          'public_key': (item.public_key | default('') | trim) if (item.public_key is defined and (item.public_key | length > 0)) else (peer_pub.stdout | trim)
-        } ] }}"
+  include_tasks: resolve_peer.yml
   loop: "{{ wireguard_peers }}"
   loop_control:
     label: "{{ item.name }}"
