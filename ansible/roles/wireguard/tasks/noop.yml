@@ -1,0 +1,6 @@
+---
+# Intentionally empty: used to load role defaults/vars without running role tasks.
+- name: WireGuard noop
+  debug:
+    msg: "Loaded wireguard role defaults"
+  changed_when: false

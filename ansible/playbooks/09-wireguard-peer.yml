@@ -4,24 +4,42 @@
 #
 # Usage examples:
 #   # Add a laptop peer (auto-pick IP)
-#   ansible-playbook -i production.ini 09-wireguard-peer.yml -e wg_peer_action=add -e wg_peer_name=laptop3 --ask-vault-pass
+#   ansible-playbook -i production.ini playbooks/09-wireguard-peer.yml \
+#     -e wg_peer_action=add -e wg_peer_name=laptop3 --ask-vault-pass
 #
 #   # Add with explicit VPN IP
-#   ansible-playbook -i production.ini 09-wireguard-peer.yml -e wg_peer_action=add -e wg_peer_name=laptop3 -e wg_peer_ip=10.8.0.12 --ask-vault-pass
+#   ansible-playbook -i production.ini playbooks/09-wireguard-peer.yml \
+#     -e wg_peer_action=add -e wg_peer_name=laptop3 -e wg_peer_ip=10.8.0.12 --ask-vault-pass
 #
 #   # Remove a peer
-#   ansible-playbook -i production.ini 09-wireguard-peer.yml -e wg_peer_action=remove -e wg_peer_name=laptop3 --ask-vault-pass
+#   ansible-playbook -i production.ini playbooks/09-wireguard-peer.yml \
+#     -e wg_peer_action=remove -e wg_peer_name=laptop3 --ask-vault-pass
 #
 # Notes:
 # - Updates /etc/wireguard/<interface>.conf via block markers (idempotent).
 # - Generates/fetches a ready client .conf. Optional QR PNG if enabled.
 # - One peer per laptop is recommended.
+# - This playbook loads wireguard role defaults via a no-op include_role task.
+#   Ensure ansible/roles/wireguard/tasks/noop.yml exists (see note below).
 # ============================================================
 
 - hosts: wireguard_servers
   become: true
 
   tasks:
+    # NOTE: Create this file once:
+    #   ansible/roles/wireguard/tasks/noop.yml
+    # with content:
+    # ---
+    # - name: WireGuard noop
+    #   debug:
+    #     msg: "Loaded wireguard role defaults"
+    #   changed_when: false
+    - name: Load WireGuard role defaults (no-op)
+      include_role:
+        name: wireguard
+        tasks_from: noop
+
     - name: Normalize inputs
       set_fact:
         wg_peer_action_norm: "{{ (wg_peer_action | default('add')) | lower | trim }}"
@@ -218,4 +236,3 @@
       systemd:
         name: "wg-quick@{{ wireguard_interface }}"
         state: restarted
-
