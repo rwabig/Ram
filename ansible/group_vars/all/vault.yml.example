@@ -10,6 +10,25 @@
 # Keep ALL secrets here (WireGuard keys, Authelia secrets, Agent Zero passwords).
 # ============================================================
 
+# --------------------------------------------------------
+# EDGE CORE SETTINGS
+# --------------------------------------------------------
+edge_gateway_email: "email@example.com"
+
+# --------------------------------------------------------
+vscode_domain: "vscode.example.com"
+vscode_port: 8080
+
+# --------------------------------------------------------
+# Deploy PHP Application Platform
+app_name: cgs
+app_domain: cgs.example.com
+db_port: "5432"
+db_name: cgs
+db_user: cgs_user
+db_password: strong_password
+
+
 # ------------------------------------------------------------
 # WireGuard
 #
