@@ -196,10 +196,120 @@ ansible-playbook playbooks/01-docker.yml
 ansible-playbook playbooks/02-edge-gateway.yml
 ansible-playbook playbooks/03-vscode.yml
 ansible-playbook playbooks/04-deploy-php-app.yml
-ansible-playbook playbooks/05-authelia.yml
+ansible-playbook playbooks/05-wireguard.yml
+ansible-playbook playbooks/09-wireguard-peer.yml -e wg_peer_action=add -e wg_peer_name=laptop_station_1
+ansible-playbook playbooks/06-authelia.yml
 
 # or
 ansible-playbook -i inventory 04-deploy-php-app.yml
+
+&&&&&&&&&&&&&&&&&&&&&&
+
+5) What you should do next (safe test flow)
+A) Run the base WireGuard install
+cd ~/Ram/ansible
+ansible-playbook playbooks/05-wireguard.yml
+B) Add a peer
+
+(using the new ready-to-paste 09-wireguard-peer.yml you just got)
+
+ansible-playbook playbooks/09-wireguard-peer.yml -e wg_peer_action=add -e wg_peer_name=laptop1
+C) Copy the generated config to your laptop
+
+From the server, view where it landed:
+
+ls -la /etc/wireguard/client-configs/
+ls -la ~/Ram/ansible/artifacts/wireguard/
+
+Then download laptop1.conf to your laptop (scp, sftp, etc.).
+
+6) Laptop initial setup (quick)
+Windows/macOS
+
+Install WireGuard app
+
+Import laptop1.conf
+
+Activate tunnel
+
+Ubuntu laptop
+sudo apt update
+sudo apt install wireguard
+sudo cp laptop1.conf /etc/wireguard/laptop1.conf
+sudo wg-quick up laptop1
+
+Test:
+
+ping 10.8.0.1
+
+Only after this works, consider:
+
+wireguard_restrict_ssh_to_vpn: true
+
+If you paste the values you’re using for these vars (from your group_vars/vault):
+
+wireguard_interface
+
+wireguard_endpoint
+
+wireguard_client_configs_dir
+
+wireguard_client_allowed_ips
+
+…I’ll sanity-check them to prevent the most common misconfig (endpoint/allowed IPs).
+
+.................................
+
+That error is purely permissions/ownership:
+
+/home/ubuntu/Ram/ansible/group_vars/all is owned by root (or not writable by ubuntu), so your ubuntu user can’t write/encrypt files there.
+
+✅ Fix it (pick one)
+Option A (recommended): change ownership of the repo to ubuntu
+
+This is usually best since you’re working as ubuntu.
+
+sudo chown -R ubuntu:ubuntu ~/Ram
+
+Then retry:
+
+cd ~/Ram/ansible
+ansible-vault encrypt group_vars/all/vault.yml
+Option B: keep repo owned by root, run vault as sudo
+
+If you intentionally want root ownership:
+
+sudo ansible-vault encrypt ~/Ram/ansible/group_vars/all/vault.yml
+
+(But then editing files will keep requiring sudo — annoying.)
+
+Option C: fix only the group_vars folder
+sudo chown -R ubuntu:ubuntu ~/Ram/ansible/group_vars
+After fixing permissions: verify the vault loads
+
+Once encrypted, test that Ansible can see the variable:
+
+cd ~/Ram/ansible
+ansible localhost -m debug -a "var=wireguard_endpoint" --ask-vault-pass
+
+You should see:
+
+wireguard_endpoint: vpn.unifypesacard.shop:51820
+
+Then run the peer playbook:
+
+ansible-playbook playbooks/09-wireguard-peer.yml \
+  -e wg_peer_action=add -e wg_peer_name=laptop_station_1 \
+  --ask-vault-pass
+Quick note on why ownership became root
+
+You created/edited some repo files earlier using sudo (or an Ansible task wrote files into the repo path), which caused root ownership. Fixing ownership once avoids repeated permission errors.
+
+If you run ls -la ~/Ram/ansible/group_vars and paste the first few lines, I can tell you exactly which directories are root-owned.
+
+&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+
+
 
 ///////////
 
