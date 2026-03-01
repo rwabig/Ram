@@ -3,43 +3,43 @@
 # WireGuard peer add/remove (one command onboarding)
 #
 # Usage examples:
-#   # Add a laptop peer (auto-pick IP)
-#   ansible-playbook -i production.ini playbooks/09-wireguard-peer.yml \
+#   ansible-playbook -i inventory/production.ini playbooks/09-wireguard-peer.yml \
 #     -e wg_peer_action=add -e wg_peer_name=laptop3 --ask-vault-pass
 #
-#   # Add with explicit VPN IP
-#   ansible-playbook -i production.ini playbooks/09-wireguard-peer.yml \
+#   ansible-playbook -i inventory/production.ini playbooks/09-wireguard-peer.yml \
 #     -e wg_peer_action=add -e wg_peer_name=laptop3 -e wg_peer_ip=10.8.0.12 --ask-vault-pass
 #
-#   # Remove a peer
-#   ansible-playbook -i production.ini playbooks/09-wireguard-peer.yml \
+#   ansible-playbook -i inventory/production.ini playbooks/09-wireguard-peer.yml \
 #     -e wg_peer_action=remove -e wg_peer_name=laptop3 --ask-vault-pass
-#
-# Notes:
-# - Updates /etc/wireguard/<interface>.conf via block markers (idempotent).
-# - Generates/fetches a ready client .conf. Optional QR PNG if enabled.
-# - One peer per laptop is recommended.
-# - This playbook loads wireguard role defaults via a no-op include_role task.
-#   Ensure ansible/roles/wireguard/tasks/noop.yml exists (see note below).
 # ============================================================
 
 - hosts: wireguard_servers
   become: true
 
-  tasks:
-    # NOTE: Create this file once:
-    #   ansible/roles/wireguard/tasks/noop.yml
-    # with content:
-    # ---
-    # - name: WireGuard noop
-    #   debug:
-    #     msg: "Loaded wireguard role defaults"
-    #   changed_when: false
-    - name: Load WireGuard role defaults (no-op)
-      include_role:
-        name: wireguard
-        tasks_from: noop
+  # Self-contained defaults (vault/group_vars can override)
+  vars:
+    # WireGuard interface name
+    wireguard_interface: "{{ wireguard_interface | default('wg0') }}"
+    # Endpoint clients connect to (MUST be set in vault/group_vars)
+    wireguard_endpoint: "{{ wireguard_endpoint | default('CHANGE_ME_VPN_ENDPOINT') }}"
+    # Client routing policy
+    wireguard_client_allowed_ips: "{{ wireguard_client_allowed_ips | default('10.8.0.0/24') }}"
+    wireguard_client_persistent_keepalive: "{{ wireguard_client_persistent_keepalive | default(25) }}"
 
+    # Server output paths
+    wireguard_client_configs_dir: "{{ wireguard_client_configs_dir | default('/etc/wireguard/client-configs') }}"
+    wireguard_qr_dir: "{{ wireguard_qr_dir | default('/etc/wireguard/client-qr') }}"
+
+    # Fetch behavior
+    wireguard_fetch_client_configs: "{{ wireguard_fetch_client_configs | default(true) }}"
+    wireguard_generate_qr_codes: "{{ wireguard_generate_qr_codes | default(false) }}"
+    wireguard_fetch_qr_codes: "{{ wireguard_fetch_qr_codes | default(true) }}"
+
+    # Controller artifact paths (when running locally, these land on the server)
+    wireguard_local_client_configs_dir: "{{ wireguard_local_client_configs_dir | default(playbook_dir ~ '/../artifacts/wireguard') }}"
+    wireguard_local_qr_dir: "{{ wireguard_local_qr_dir | default(playbook_dir ~ '/../artifacts/wireguard-qr') }}"
+
+  tasks:
     - name: Normalize inputs
       set_fact:
         wg_peer_action_norm: "{{ (wg_peer_action | default('add')) | lower | trim }}"
@@ -51,7 +51,10 @@
         that:
           - wg_peer_action_norm in ['add', 'remove']
           - wg_peer_name_norm | length > 0
-        fail_msg: "Provide -e wg_peer_action=add|remove and -e wg_peer_name=<name> [-e wg_peer_ip=10.8.0.X]"
+          - wireguard_endpoint != 'CHANGE_ME_VPN_ENDPOINT'
+        fail_msg: >-
+          Provide -e wg_peer_action=add|remove and -e wg_peer_name=<name> [-e wg_peer_ip=10.8.0.X]
+          AND set wireguard_endpoint in vault/group_vars (e.g. vpn.example.com:51820)
 
     - name: Ensure peer directories exist (server-side)
       file:
