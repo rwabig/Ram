@@ -224,6 +224,7 @@
       when:
         - wg_peer_action_norm == 'add'
         - wg_fetch_client_configs | bool
+        - ansible_connection != 'local'
 
     - name: Fetch QR code to controller
       fetch:
@@ -234,6 +235,7 @@
         - wg_peer_action_norm == 'add'
         - wg_generate_qr | bool
         - wg_fetch_qr | bool
+        - ansible_connection != 'local'
 
   handlers:
     - name: Restart WireGuard
