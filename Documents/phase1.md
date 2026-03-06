@@ -197,8 +197,22 @@ ansible-playbook playbooks/02-edge-gateway.yml
 ansible-playbook playbooks/03-vscode.yml
 ansible-playbook playbooks/04-deploy-php-app.yml
 ansible-playbook playbooks/05-wireguard.yml
-ansible-playbook playbooks/09-wireguard-peer.yml -e wg_peer_action=add -e wg_peer_name=laptop_station_1
 ansible-playbook playbooks/06-authelia.yml
+ansible-playbook playbooks/07-agent-zero.yml
+ansible-playbook playbooks/08-agent-zero-upgrade.yml
+.....
+ansible-playbook playbooks/09-wireguard-peer.yml -e wg_peer_action=add -e wg_peer_name=laptop_station_1
+or
+ansible-playbook playbooks/09-wireguard-peer.yml \
+  -e wg_peer_action=add -e wg_peer_name=laptop_station_1 \
+  --ask-vault-pass
+or
+ansible-playbook playbooks/09-wireguard-peer.yml \
+  -e wg_peer_action=add -e wg_peer_name=laptop_station_1 \
+  -e wg_peer_ip=10.8.0.10 \
+  --ask-vault-pass
+
+ansible-playbook playbooks/10-agent-zero-restore.yml
 
 # or
 ansible-playbook -i inventory 04-deploy-php-app.yml
@@ -306,6 +320,334 @@ Quick note on why ownership became root
 You created/edited some repo files earlier using sudo (or an Ansible task wrote files into the repo path), which caused root ownership. Fixing ownership once avoids repeated permission errors.
 
 If you run ls -la ~/Ram/ansible/group_vars and paste the first few lines, I can tell you exactly which directories are root-owned.
+
+.....................................
+
+Nice — that run is clean now. ✅
+
+A few important confirmations based on the output:
+
+The peer was added (WireGuard config updated).
+
+Client config was rendered at:
+
+/etc/wireguard/client-configs/laptop_station_1.conf
+
+Fetch steps were skipped (expected since you’re running Ansible locally on the server and/or your conditions disabled fetch).
+
+Now you just need to install the client and test handshake.
+
+1) Get the client config file onto your laptop
+
+On the server:
+
+sudo ls -la /etc/wireguard/client-configs/laptop_station_1.conf
+sudo cat /etc/wireguard/client-configs/laptop_station_1.conf
+
+Copy it to your home dir so it’s easy to download:
+
+sudo cp /etc/wireguard/client-configs/laptop_station_1.conf ~/
+sudo chown ubuntu:ubuntu ~/laptop_station_1.conf
+chmod 600 ~/laptop_station_1.conf
+
+Then download laptop_station_1.conf to your laptop using SCP/SFTP.
+
+2) Install WireGuard on the laptop and import config
+Windows / macOS
+
+Install WireGuard app
+
+Import laptop_station_1.conf
+
+Activate tunnel
+
+Ubuntu laptop
+sudo apt update
+sudo apt install wireguard
+sudo cp laptop_station_1.conf /etc/wireguard/laptop_station_1.conf
+sudo wg-quick up laptop_station_1
+3) Test connectivity (server side + laptop side)
+On laptop (after tunnel up):
+ping 10.8.0.1
+On server:
+sudo wg show
+
+You should see a latest handshake timestamp for laptop_station_1 once the laptop connects.
+
+4) About “Restart WireGuard” handler
+
+Your playbook updated config with blockinfile, but the recap shows no “changed”. That’s because the peer already existed with same content (idempotent) OR the file content didn’t change. That’s fine.
+
+If you ever add a new peer and want to ensure the service reloads, you can manually restart:
+
+sudo systemctl restart wg-quick@wg0
+5) Next hardening step (only after laptop handshake works)
+
+Once you confirm the laptop can connect to VPN and you can SSH through it:
+
+Set in vault/group_vars:
+
+wireguard_restrict_ssh_to_vpn: true
+
+Then run:
+
+ansible-playbook playbooks/05-wireguard.yml --ask-vault-pass
+
+That will prevent public SSH and make management VPN-only.
+
+If you paste the contents of ~/laptop_station_1.conf (you can redact the PrivateKey), I’ll verify Endpoint, AllowedIPs, and the address are correct before you import it.
+
+............................
+
+To edit an encrypted ansible-vault file, you use ansible-vault edit — never open it with nano/vim directly.
+
+✅ Edit your encrypted vault.yml
+
+From inside your ansible directory:
+
+cd ~/Ram/ansible
+ansible-vault edit group_vars/all/vault.yml
+
+It will:
+
+Ask for vault password
+
+Decrypt to a temporary file
+
+Open your default editor
+
+Re-encrypt automatically when you save & exit
+
+🔧 If it says editor not set
+
+Set your editor first (example: nano):
+
+export EDITOR=nano
+
+Or permanently:
+
+echo 'export EDITOR=nano' >> ~/.bashrc
+source ~/.bashrc
+
+Then run the edit command again.
+
+🧪 Verify after editing
+
+After saving, confirm Ansible sees the value:
+
+ansible localhost -m debug -a "var=wireguard_endpoint" --ask-vault-pass
+🔐 Other useful vault commands
+View without editing
+ansible-vault view group_vars/all/vault.yml
+Re-encrypt (if you accidentally decrypted it)
+ansible-vault encrypt group_vars/all/vault.yml
+Change vault password
+ansible-vault rekey group_vars/all/vault.yml
+⚠️ Important Production Tip
+
+Never:
+
+nano vault.yml
+
+If you save it manually while encrypted, you will corrupt it.
+
+Always use ansible-vault edit.
+
+If you'd like, I can also show you how to switch to a .vault_pass file so you don’t need --ask-vault-pass every time (cleaner for production).
+
+.................................
+
+That can happen for two common reasons:
+
+You’re not actually hitting the server over public SSH anymore — your SSH client is routing through the WireGuard tunnel (even if you typed the public hostname/IP).
+
+UFW didn’t end up restricting port 22, or there’s another firewall path allowing it (Lightsail firewall, iptables rules, sshd listening on another port/interface).
+
+Let’s verify which case it is, then apply the right fix.
+
+1) Confirm whether your SSH is going over WireGuard or public internet
+On your laptop, while connected to WireGuard:
+
+Run:
+
+ssh -v ubuntu@<your-server-host-or-ip>
+
+Look for the line like:
+
+Connecting to ... port 22
+and note the IP it says it’s connecting to.
+
+Also run:
+
+ip route get <server-public-ip>
+
+If it routes via your WireGuard interface (like dev wg0), then you’re SSHing through VPN already.
+
+On the server, check the SSH client source IP
+
+Run this on the server while you connect:
+
+sudo ss -tnp | grep ':22'
+
+You’ll see a line like:
+
+ESTAB ... <server>:22 <client_ip>:<port>
+
+If <client_ip> is 10.8.0.x, then SSH is already VPN-only in practice.
+
+2) Check whether the UFW restriction is actually applied
+
+Run on the server:
+
+sudo ufw status numbered
+
+You want to see something like:
+
+22 ALLOW IN 10.8.0.0/24 (good)
+and NOT:
+
+22 ALLOW IN Anywhere (bad)
+
+Also run:
+
+sudo ufw status verbose
+
+If you still see “Anywhere” allowed on 22, your playbook didn’t change it (or another rule is overriding it).
+
+Apply the restriction explicitly (manual, immediate)
+
+If you want to enforce it now:
+
+sudo ufw delete allow 22/tcp
+sudo ufw allow from 10.8.0.0/24 to any port 22 proto tcp
+sudo ufw reload
+sudo ufw status numbered
+
+(This assumes your VPN subnet is 10.8.0.0/24.)
+
+3) Lightsail firewall may still allow public SSH (that’s separate)
+
+Even if UFW blocks it, Lightsail can still show port 22 “open” at the edge. Lightsail doesn’t override UFW; it just controls what reaches your VM.
+
+To be truly “SSH only via VPN”, set Lightsail firewall to:
+
+allow UDP 51820
+
+remove/restrict TCP 22 (optional, but recommended once you’re confident)
+
+If you can’t remove 22 because you might lose access, keep it open but rely on UFW.
+
+4) Make sure your Ansible actually set the var and applied rules
+
+It’s possible the playbook ran but the task didn’t fire (e.g., wrong var file, vault not loaded, wrong host group).
+
+Confirm value seen by Ansible:
+
+cd ~/Ram/ansible
+ansible localhost -m debug -a "var=wireguard_restrict_ssh_to_vpn" --ask-vault-pass
+
+It should print true.
+
+Then rerun wireguard playbook with vault:
+
+ansible-playbook playbooks/05-wireguard.yml --ask-vault-pass
+
+After that, re-check:
+
+sudo ufw status numbered
+5) Extra-hardening (optional): bind sshd to WireGuard only
+
+This is the strongest guarantee: SSH listens only on the VPN interface.
+
+In /etc/ssh/sshd_config:
+
+ListenAddress 10.8.0.1
+
+Then:
+
+sudo systemctl restart ssh
+
+⚠️ Only do this after you’re 100% sure you can access 10.8.0.1 via WireGuard, otherwise you can lock yourself out.
+
+Tell me these 3 outputs and I’ll pinpoint it immediately
+
+Run on the server and paste results:
+
+sudo ufw status numbered
+sudo ss -ltnp | grep ':22'
+
+While you connect from laptop (run on server):
+
+sudo ss -tnp | grep ':22'
+
+With those, I’ll tell you whether you’re simply connecting via VPN already, or UFW rules aren’t applied, and what exact change fixes it.
+
+
+........
+Your UFW rules are not yet “SSH VPN-only”
+
+Right now your server shows:
+
+22/tcp ALLOW Anywhere
+
+So SSH is still public. Don’t restrict yet until Windows key auth is solved, but once solved, do this:
+
+1) Allow SSH from VPN subnet
+sudo ufw allow from 10.8.0.0/24 to any port 22 proto tcp
+2) Deny public SSH
+sudo ufw delete allow 22/tcp
+sudo ufw deny 22/tcp
+sudo ufw reload
+sudo ufw status numbered
+
+You should end with:
+
+22 ALLOW IN 10.8.0.0/24
+
+22 DENY IN Anywhere
+
+⚠️ Keep your current SSH session open while testing a new session.
+
+current firewall state
+[1] 80/tcp   ALLOW IN  Anywhere
+[2] 443/tcp  DENY IN   Anywhere
+[3] 51820/udp ALLOW IN Anywhere
+[4] 443/tcp  ALLOW IN  10.8.0.0/24
+[5] 22/tcp   ALLOW IN  10.8.0.0/24
+[6] 22/tcp   DENY IN   Anywhere
+What this means
+Port	Access	Result
+22 (SSH)	Only 10.8.0.0/24	✅ VPN-only SSH
+443 (HTTPS)	Only 10.8.0.0/24	✅ private web access
+80 (HTTP)	Public	used for ACME / Let's Encrypt
+51820 (UDP)	Public	WireGuard entry
+
+So your architecture is now:
+
+Internet
+   │
+   ├── UDP 51820 → WireGuard VPN
+   │
+Laptop (10.8.0.10)
+   │
+   ├── SSH → 10.8.0.1
+   └── HTTPS → 10.8.0.1
+
+Public users cannot access SSH or HTTPS.
+
+Small improvement (recommended)
+
+Right now rule order could be slightly cleaner. UFW processes rules top-down. It already works, but you can simplify.
+
+Optional cleanup:
+
+sudo ufw delete 2
+sudo ufw insert 1 deny 443/tcp
+
+But honestly, it's fine as is.
+
+
+
 
 &&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 
