@@ -178,7 +178,8 @@
           # {{ wg_peer_name_norm }}
           PrivateKey = {{ wg_peer_private_key }}
           Address = {{ wg_peer_ip_resolved }}/32
-
+{% if wireguard_client_dns is defined and (wireguard_client_dns | length > 0) %}          DNS = {{ wireguard_client_dns }}
+{% endif %}
           [Peer]
           PublicKey = {{ wg_server_pub.stdout | trim }}
           Endpoint = {{ wg_endpoint }}

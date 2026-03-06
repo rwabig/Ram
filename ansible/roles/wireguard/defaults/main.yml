@@ -78,3 +78,6 @@ wireguard_fetch_qr_codes: true
 
 # Local output directory for QR images
 wireguard_local_qr_dir: "{{ playbook_dir }}/../artifacts/wireguard-qr"
+
+# Optional DNS server pushed to clients (recommended for internal CoreDNS)
+wireguard_client_dns: ""

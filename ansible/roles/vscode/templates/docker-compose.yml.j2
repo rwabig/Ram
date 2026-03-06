@@ -1,6 +1,39 @@
 version: "3.9"
 
 services:
+{% if vscode_users | length > 0 %}
+{% for user in vscode_users %}
+  vscode-{{ user.username }}:
+    image: codercom/code-server:latest
+    container_name: vscode-{{ user.username }}
+    restart: unless-stopped
+
+    command: >
+      code-server
+      --bind-addr 0.0.0.0:{{ vscode_port }}
+      --auth password
+      /home/coder/project
+
+    environment:
+      PASSWORD: "{{ user.password | default(vscode_default_password) }}"
+
+    volumes:
+      - ./{{ user.username }}/workspace:/home/coder/project
+      - ./{{ user.username }}/config:/home/coder/.local/share/code-server
+
+    networks:
+      - {{ edge_gateway_network }}
+
+    labels:
+      edge.enable: "true"
+      edge.domain: "{{ user.domain | default(user.username ~ '.' ~ vscode_default_domain_suffix) }}"
+      edge.port: "{{ vscode_port }}"
+{% if vscode_enable_edge_auth | bool %}
+      edge.auth: "authelia"
+{% endif %}
+
+{% endfor %}
+{% else %}
   vscode:
     image: codercom/code-server:latest
     container_name: {{ vscode_container_name }}
@@ -13,18 +46,17 @@ services:
       /home/coder/project
 
     volumes:
-      - ./data:/home/coder/project
+      - ./vscode/workspace:/home/coder/project
+      - ./vscode/config:/home/coder/.local/share/code-server
 
     networks:
       - {{ edge_gateway_network }}
 
-    # --------------------------------------------------------
-    # EDGE AUTO-DISCOVERY LABELS (ELITE MODE)
-    # --------------------------------------------------------
     labels:
       edge.enable: "true"
       edge.domain: "{{ vscode_domain }}"
       edge.port: "{{ vscode_port }}"
+{% endif %}
 
 networks:
   {{ edge_gateway_network }}:

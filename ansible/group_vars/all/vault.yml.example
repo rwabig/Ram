@@ -80,3 +80,34 @@ agent_zero_users:
     domain: "bob.a0.example.com"
     auth_login: "bob"
     auth_password: "CHANGE_ME_STRONG_PASSWORD"
+
+
+# ------------------------------------------------------------
+# CoreDNS / internal DNS over WireGuard
+# ------------------------------------------------------------
+# Tell WireGuard clients to use the VPN DNS resolver at 10.8.0.1.
+# After enabling this, internal app domains can resolve to the edge gateway
+# over the tunnel without hosts-file edits.
+#
+# coredns_static_domains:
+#   - "cgs.unifypesacard.shop"
+#   - "auth.unifypesacard.shop"
+#   - "vscode.unifypesacard.shop"
+# coredns_wildcard_zones:
+#   - "dev.unifypesacard.shop"
+#   - "a0.unifypesacard.shop"
+
+# ------------------------------------------------------------
+# VS Code (per-user)
+# ------------------------------------------------------------
+# Multi-tenant code-server: one container per user.
+# Domains under *.dev.example.com work automatically with CoreDNS wildcard mode.
+#
+# vscode_default_domain_suffix: "dev.example.com"
+vscode_users:
+  - username: alice
+    domain: "alice.dev.example.com"
+    password: "CHANGE_ME_STRONG_PASSWORD"
+  - username: bob
+    domain: "bob.dev.example.com"
+    password: "CHANGE_ME_STRONG_PASSWORD"

@@ -1,0 +1,11 @@
+---
+# ============================================================
+# COREDNS (INTERNAL DNS OVER WIREGUARD)
+# ============================================================
+
+- name: Deploy CoreDNS for private internal app DNS
+  hosts: coredns_servers
+  become: true
+
+  roles:
+    - role: coredns

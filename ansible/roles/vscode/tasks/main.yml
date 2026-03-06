@@ -1,23 +1,49 @@
 ---
-# ============================================================
-# VS CODE — DIRECTORIES
-# ============================================================
-
 - name: Ensure vscode base directory exists
   file:
     path: "{{ vscode_base_path }}"
     state: directory
     mode: "0755"
 
-- name: Ensure vscode data directory exists
+- name: Build effective VS Code user list
+  set_fact:
+    vscode_effective_users: >-
+      {{
+        vscode_users
+        if (vscode_users | length > 0)
+        else [ {
+          'username': vscode_container_name,
+          'domain': vscode_domain,
+          'password': vscode_default_password
+        } ]
+      }}
+
+- name: Ensure per-user root directory exists
   file:
-    path: "{{ vscode_base_path }}/data"
+    path: "{{ vscode_base_path }}/{{ item.username }}"
     state: directory
     mode: "0755"
+  loop: "{{ vscode_effective_users }}"
+  loop_control:
+    label: "{{ item.username }}"
 
-# ============================================================
-# DOCKER COMPOSE
-# ============================================================
+- name: Ensure per-user workspace directory exists
+  file:
+    path: "{{ vscode_base_path }}/{{ item.username }}/workspace"
+    state: directory
+    mode: "0755"
+  loop: "{{ vscode_effective_users }}"
+  loop_control:
+    label: "{{ item.username }}"
+
+- name: Ensure per-user config directory exists
+  file:
+    path: "{{ vscode_base_path }}/{{ item.username }}/config"
+    state: directory
+    mode: "0755"
+  loop: "{{ vscode_effective_users }}"
+  loop_control:
+    label: "{{ item.username }}"
 
 - name: Render vscode docker compose
   template:
@@ -31,20 +57,8 @@
     chdir: "{{ vscode_base_path }}"
   changed_when: false
 
-# ============================================================
-# EDGE REGISTRATION (AUTO DISCOVERY - LEGACY FALLBACK)
-# ============================================================
-
 - name: Ensure edge apps directory exists
   file:
     path: "{{ edge_gateway_base_path }}/apps"
     state: directory
     mode: "0755"
-
-# ============================================================
-# FUTURE AUTOMATION HOOK (DISABLED)
-# ============================================================
-
-- name: Trigger edge rebuild
-  command: ansible-playbook playbooks/02-edge-gateway.yml
-  when: false

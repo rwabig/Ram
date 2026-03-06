@@ -118,3 +118,10 @@ Kubernetes, observability, CI/CD pipelines, data platforms, edge compute, and mo
 ---
 
 If you build infrastructure that must *survive reality*, Ram is for you 🐏
+
+
+## New additions
+
+- CoreDNS over WireGuard for internal app DNS (`ansible/playbooks/03a-coredns.yml`)
+- Multi-tenant code-server in the existing `vscode` role via `vscode_users`
+- WireGuard client configs can now include `DNS = 10.8.0.1` when `wireguard_client_dns` is set

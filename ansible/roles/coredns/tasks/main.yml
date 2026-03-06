@@ -1,0 +1,46 @@
+---
+- name: Ensure CoreDNS base directory exists
+  file:
+    path: "{{ coredns_base_path }}"
+    state: directory
+    mode: "0755"
+
+- name: Ensure CoreDNS config directory exists
+  file:
+    path: "{{ coredns_base_path }}/config"
+    state: directory
+    mode: "0755"
+
+- name: Render CoreDNS Corefile
+  template:
+    src: Corefile.j2
+    dest: "{{ coredns_base_path }}/config/Corefile"
+    mode: "0644"
+
+- name: Render CoreDNS docker compose
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ coredns_base_path }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Start CoreDNS stack
+  command: docker compose up -d
+  args:
+    chdir: "{{ coredns_base_path }}"
+  changed_when: false
+
+- name: Allow DNS UDP from VPN subnet
+  ufw:
+    rule: allow
+    proto: udp
+    port: "{{ coredns_port }}"
+    src: "{{ coredns_allow_from_cidr }}"
+  when: coredns_manage_ufw | bool
+
+- name: Allow DNS TCP from VPN subnet
+  ufw:
+    rule: allow
+    proto: tcp
+    port: "{{ coredns_port }}"
+    src: "{{ coredns_allow_from_cidr }}"
+  when: coredns_manage_ufw | bool

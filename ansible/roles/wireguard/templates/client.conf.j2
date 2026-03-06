@@ -2,7 +2,8 @@
 # {{ item.name }}
 PrivateKey = {{ item.private_key }}
 Address = {{ item.allowed_ips }}
-
+{% if wireguard_client_dns | default('') | length > 0 %}DNS = {{ wireguard_client_dns }}
+{% endif %}
 [Peer]
 PublicKey = {{ wireguard_server_public_key }}
 Endpoint = {{ wireguard_endpoint }}

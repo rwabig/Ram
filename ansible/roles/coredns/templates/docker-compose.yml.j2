@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  coredns:
+    image: {{ coredns_image }}
+    container_name: coredns
+    restart: unless-stopped
+    command: -conf /etc/coredns/Corefile
+
+    volumes:
+      - ./config/Corefile:/etc/coredns/Corefile:ro
+
+    ports:
+      - "{{ coredns_bind_ip }}:{{ coredns_port }}:{{ coredns_port }}/udp"
+      - "{{ coredns_bind_ip }}:{{ coredns_port }}:{{ coredns_port }}/tcp"
+
+    networks:
+      - {{ coredns_network }}
+
+networks:
+  {{ coredns_network }}:
+    external: true

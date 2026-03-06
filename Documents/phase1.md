@@ -646,6 +646,94 @@ sudo ufw insert 1 deny 443/tcp
 
 But honestly, it's fine as is.
 
+.........
+
+3️⃣ Removing IPv6 (good idea if you don't use it)
+
+IPv6 itself isn’t insecure, but if you don’t manage it, it can bypass firewall expectations.
+
+Disable IPv6 in UFW
+
+Edit:
+
+sudo nano /etc/default/ufw
+
+Change:
+
+IPV6=no
+
+Then reload firewall:
+
+sudo ufw disable
+sudo ufw enable
+
+Check again:
+
+sudo ufw status
+
+All (v6) rules should disappear.
+
+4️⃣ Clean final firewall (recommended)
+
+Your ideal final rules:
+
+80/tcp     ALLOW Anywhere
+51820/udp  ALLOW Anywhere
+
+443/tcp    ALLOW 10.8.0.0/24
+443/tcp    DENY  Anywhere
+
+22/tcp     ALLOW 10.8.0.0/24
+22/tcp     DENY  Anywhere
+
+You can remove the AWS internal rule if you want:
+
+sudo ufw delete allow from 172.26.0.0/16 to any port 22
+
+Because your VPN SSH already works.
+
+5️⃣ Your system security level right now
+
+You’ve achieved:
+
+Internet
+   │
+UDP 51820
+   │
+WireGuard VPN
+   │
+Private network 10.8.0.0/24
+   │
+SSH + HTTPS restricted
+   │
+Edge gateway
+   │
+Authelia
+   │
+Agent Zero containers
+
+This is very strong infrastructure isolation.
+
+.........
+
+So the rule you want to remove is #6.
+
+Run:
+
+sudo ufw delete 6
+
+.............
+
+One small improvement (recommended)
+
+Add an explicit deny for SSH to make it clearer:
+
+sudo ufw deny 22/tcp
+
+Final state becomes:
+
+22/tcp     ALLOW 10.8.0.0/24
+22/tcp     DENY  Anywhere
 
 
 
