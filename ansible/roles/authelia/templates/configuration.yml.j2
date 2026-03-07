@@ -18,15 +18,8 @@ authentication_backend:
       algorithm: argon2id
 
 access_control:
-  default_policy: {{ authelia_default_policy }}
-  rules:
-{% if authelia_protected_domains | length > 0 %}
-    - domain:
-{% for d in authelia_protected_domains %}
-        - "{{ d }}"
-{% endfor %}
-      policy: one_factor
-{% endif %}
+  default_policy: deny
+{{ authelia_generated_rules | indent(2, true) }}
 
 session:
   name: authelia_session

@@ -20,11 +20,14 @@
   become: true
 
   vars:
-    agent_zero_target_image: "{{ agent_zero_target_image | default(agent_zero_image) }}"
     agent_zero_backup_root: "{{ agent_zero_base_path }}/backups"
     agent_zero_backup_ts: "{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
 
   tasks:
+    - name: Normalize target image
+      set_fact:
+        agent_zero_target_image_resolved: "{{ agent_zero_target_image | default(agent_zero_image, true) }}"
+
     - name: Assert user list is provided
       assert:
         that:
@@ -53,7 +56,6 @@
           command: >-
             /bin/sh -lc
             "tar -czf '{{ backup_file }}' -C '{{ user_dir }}' usr .env"
-
       loop: "{{ agent_zero_users }}"
       loop_control:
         label: "{{ item.username }}"
@@ -62,7 +64,7 @@
       import_role:
         name: agent_zero
       vars:
-        agent_zero_image: "{{ agent_zero_target_image }}"
+        agent_zero_image: "{{ agent_zero_target_image_resolved }}"
         agent_zero_render_only: true
 
     - name: Pull target image

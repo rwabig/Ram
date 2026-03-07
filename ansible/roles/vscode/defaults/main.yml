@@ -7,30 +7,20 @@
 # CORE PATHS
 # ------------------------------------------------------------
 vscode_base_path: "/opt/vscode"
-
-# ------------------------------------------------------------
-# SINGLE-CONTAINER LEGACY SETTINGS
-# preserved for backward compatibility when vscode_users is empty
-# ------------------------------------------------------------
-vscode_container_name: "vscode"
-vscode_domain: "vscode.example.com"
 vscode_port: 8080
 
 # ------------------------------------------------------------
 # MULTI-TENANT SETTINGS
-# one container per user when vscode_users is defined
+# one container per user
 # ------------------------------------------------------------
 vscode_enable_edge_auth: true
-vscode_default_domain_suffix: "dev.example.com"
 vscode_default_password: ""
 vscode_users: []
 # Example:
 # vscode_users:
 #   - username: alice
-#     domain: alice.dev.example.com
 #     password: "StrongPass!"
 #   - username: bob
-#     domain: bob.dev.example.com
 #     password: "StrongPass!"
 
 # ------------------------------------------------------------

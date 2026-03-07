@@ -11,6 +11,18 @@
     state: directory
     mode: "0755"
 
+- name: Wait for WireGuard bind IP to exist on host
+  shell: |
+    set -euo pipefail
+    ip addr show | grep -q "{{ coredns_bind_ip }}"
+  args:
+    executable: /bin/bash
+  register: coredns_bind_ip_check
+  retries: 20
+  delay: 2
+  until: coredns_bind_ip_check.rc == 0
+  changed_when: false
+
 - name: Render CoreDNS Corefile
   template:
     src: Corefile.j2

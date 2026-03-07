@@ -4,16 +4,22 @@
     reload
     cache 60
 
-{% if coredns_static_domains | length > 0 %}    hosts {
-{% for domain in coredns_static_domains %}        {{ coredns_bind_ip }} {{ domain }}
-{% endfor %}        fallthrough
+{% if coredns_static_domains | length > 0 %}
+    hosts {
+{% for domain in coredns_static_domains %}
+        {{ coredns_bind_ip }} {{ domain }}
+{% endfor %}
+        fallthrough
     }
 
-{% endif %}{% for zone in coredns_wildcard_zones %}    template IN A {
-        match ^([a-zA-Z0-9_-]+)\.{{ zone | replace('.', '\.') }}\.$
+{% endif %}
+{% for zone in coredns_wildcard_zones %}
+    template IN A {
+        match ^([a-zA-Z0-9-]+)\.{{ zone | replace('.', '\.') }}\.$
         answer "{{ '{{' }} .Name {{ '}}' }} 60 IN A {{ coredns_bind_ip }}"
         fallthrough
     }
 
-{% endfor %}    forward . {{ coredns_forwarders | join(' ') }}
+{% endfor %}
+    forward . {{ coredns_forwarders | join(' ') }}
 }

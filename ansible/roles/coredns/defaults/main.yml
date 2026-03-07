@@ -1,4 +1,4 @@
- ---
+---
 # ============================================================
 # COREDNS — INTERNAL DNS OVER WIREGUARD
 # ============================================================
@@ -7,11 +7,12 @@ coredns_base_path: "/opt/coredns"
 coredns_image: "coredns/coredns:latest"
 coredns_network: "{{ edge_gateway_network | default('edge-net') }}"
 
-# Bind DNS only on the WireGuard address.
+# Internal DNS should resolve private app domains to the edge gateway.
+# The edge gateway itself is reachable over WireGuard at 10.8.0.1.
 coredns_bind_ip: "10.8.0.1"
 coredns_port: 53
 
-# Local upstream resolvers used for non-private names.
+# Upstream resolvers for non-private names.
 coredns_forwarders:
   - "1.1.1.1"
   - "8.8.8.8"
@@ -23,7 +24,6 @@ coredns_root_domain: "unifypesacard.shop"
 coredns_static_domains:
   - "cgs.unifypesacard.shop"
   - "auth.unifypesacard.shop"
-  - "vscode.unifypesacard.shop"
 
 # Wildcard internal app zones that should automatically resolve to the edge gateway.
 # New tenants work without DNS edits as long as routing labels exist in edge-nginx.
@@ -31,6 +31,6 @@ coredns_wildcard_zones:
   - "dev.unifypesacard.shop"
   - "a0.unifypesacard.shop"
 
-# Allow DNS only from VPN clients.
+# Restrict DNS access to VPN clients only.
 coredns_manage_ufw: true
 coredns_allow_from_cidr: "{{ wireguard_network_cidr | default('10.8.0.0/24') }}"

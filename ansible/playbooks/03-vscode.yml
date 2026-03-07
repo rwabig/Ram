@@ -1,7 +1,6 @@
 ---
 # ============================================================
 # VS CODE STACK DEPLOYMENT
-# single-container fallback when vscode_users is empty
 # multi-tenant when vscode_users is defined
 # ============================================================
 

@@ -25,26 +25,25 @@ wireguard_endpoint: "vpn.example.com:51820"
 # Lightsail note:
 # Lightsail SSH keys are often managed per-zone. A cleaner workflow is:
 #   1) Bring up WireGuard
-#   2) Restrict SSH to VPN subnet (set wireguard_restrict_ssh_to_vpn: true)
-#   3) Use your own long-lived SSH key(s) on all laptops
+#   2) Confirm SSH works through 10.8.0.1
+#   3) Restrict SSH to VPN subnet (set wireguard_restrict_ssh_to_vpn: true)
 # This avoids juggling zone-specific keys when switching devices.
 
 # wireguard_restrict_ssh_to_vpn: true
 
 wireguard_peers: []
-#  - name: laptop_student_1
-#    allowed_ips: "10.8.0.10/32"
-    # Optional (BYO keys):
-    # private_key: "<client_private_key>"
-    # public_key: "<client_public_key>"
-#  - name: laptop_student_2
-#    allowed_ips: "10.8.0.11/32"
+# Example:
+# wireguard_peers:
+#   - name: laptop_station_1
+#     allowed_ips: "10.8.0.10/32"
+#   - name: laptop_station_2
+#     allowed_ips: "10.8.0.11/32"
 
 # ------------------------------------------------------------
 # Authelia
 # ------------------------------------------------------------
 
-# Public/auth portal domain (must resolve to your edge gateway)
+# Auth portal domain (must resolve to your edge gateway)
 authelia_domain: "auth.example.com"
 
 authelia_jwt_secret: "CHANGE_ME_LONG_RANDOM"
@@ -60,54 +59,63 @@ authelia_users:
     displayname: Alice
     email: alice@example.com
     password_hash: "$argon2id$..."
-    groups: ["a0_users"]
+    groups: ["dev_users", "a0_users"]
   - username: bob
     displayname: Bob
     email: bob@example.com
     password_hash: "$argon2id$..."
-    groups: ["a0_users"]
+    groups: ["dev_users", "a0_users"]
 
 # ------------------------------------------------------------
 # Agent Zero (per-user)
 # ------------------------------------------------------------
+# Multi-tenant Agent Zero: one container per user.
+# Hostnames are derived automatically by the edge watcher:
+#   <username>.a0.example.com
+#
+# Example:
+#   alice -> alice.a0.example.com
+#   bob   -> bob.a0.example.com
 
 agent_zero_users:
   - username: alice
-    domain: "alice.a0.example.com"
     auth_login: "alice"
     auth_password: "CHANGE_ME_STRONG_PASSWORD"
   - username: bob
-    domain: "bob.a0.example.com"
     auth_login: "bob"
     auth_password: "CHANGE_ME_STRONG_PASSWORD"
-
 
 # ------------------------------------------------------------
 # CoreDNS / internal DNS over WireGuard
 # ------------------------------------------------------------
 # Tell WireGuard clients to use the VPN DNS resolver at 10.8.0.1.
-# After enabling this, internal app domains can resolve to the edge gateway
-# over the tunnel without hosts-file edits.
+# Internal hostnames resolve to the edge gateway over the tunnel.
 #
-# coredns_static_domains:
-#   - "cgs.unifypesacard.shop"
-#   - "auth.unifypesacard.shop"
-#   - "vscode.unifypesacard.shop"
-# coredns_wildcard_zones:
-#   - "dev.unifypesacard.shop"
-#   - "a0.unifypesacard.shop"
+# Static internal domains:
+#   cgs.example.com
+#   auth.example.com
+#
+# Wildcard internal zones:
+#   *.dev.example.com
+#   *.a0.example.com
+#
+# Typical WireGuard client snippet:
+# [Interface]
+# DNS = 10.8.0.1
 
 # ------------------------------------------------------------
 # VS Code (per-user)
 # ------------------------------------------------------------
 # Multi-tenant code-server: one container per user.
-# Domains under *.dev.example.com work automatically with CoreDNS wildcard mode.
+# Hostnames are derived automatically by the edge watcher:
+#   <username>.dev.example.com
 #
-# vscode_default_domain_suffix: "dev.example.com"
+# Example:
+#   alice -> alice.dev.example.com
+#   bob   -> bob.dev.example.com
+
 vscode_users:
   - username: alice
-    domain: "alice.dev.example.com"
     password: "CHANGE_ME_STRONG_PASSWORD"
   - username: bob
-    domain: "bob.dev.example.com"
     password: "CHANGE_ME_STRONG_PASSWORD"

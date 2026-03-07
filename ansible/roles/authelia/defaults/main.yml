@@ -40,3 +40,10 @@ authelia_default_policy: "deny"
 
 # Domains that should require login. If empty, you can rely on per-service edge.auth labels.
 authelia_protected_domains: []
+
+# ------------------------------------------------------------
+# Dynamic access-control generation from edge watcher output
+# ------------------------------------------------------------
+authelia_base_domain: "unifypesacard.shop"
+authelia_domains_file: "/opt/edge-gateway/scripts/authelia_domains"
+authelia_generated_rules_file: "{{ authelia_base_path }}/config/access-control-generated.yml"

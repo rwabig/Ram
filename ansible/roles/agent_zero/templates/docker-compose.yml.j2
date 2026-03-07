@@ -18,8 +18,13 @@ services:
 
     labels:
       edge.enable: "true"
-      edge.domain: "{{ user.domain }}"
       edge.port: "80"
+{% if user.domain is defined and user.domain | length > 0 %}
+      edge.domain: "{{ user.domain }}"
+{% else %}
+      edge.tenant: "{{ user.username }}"
+      edge.class: "a0"
+{% endif %}
 {% if agent_zero_enable_edge_auth | bool %}
       edge.auth: "authelia"
 {% endif %}

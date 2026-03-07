@@ -7,11 +7,17 @@ SITES_DIR=/sites
 TMP_DIR=/tmp/edge-sites
 LOCK_FILE=/tmp/edge-lock
 NGINX_CONTAINER=edge-nginx
+CERTBOT_CONTAINER=edge-certbot
 
 EDGE_ENABLE_LABEL="edge.enable"
 EDGE_DOMAIN_LABEL="edge.domain"
 EDGE_PORT_LABEL="edge.port"
 EDGE_AUTH_LABEL="edge.auth"
+EDGE_TENANT_LABEL="edge.tenant"
+EDGE_CLASS_LABEL="edge.class"
+
+# Base domain for derived tenant routes
+EDGE_BASE_DOMAIN="${EDGE_BASE_DOMAIN:-unifypesacard.shop}"
 
 # Optional Authelia integration:
 # - create /scripts/auth_domain (mounted from edge gateway host) with value like: auth.example.com
@@ -21,6 +27,9 @@ AUTH_DOMAIN=""
 if [ -f "$AUTH_DOMAIN_FILE" ]; then
   AUTH_DOMAIN=$(cat "$AUTH_DOMAIN_FILE" 2>/dev/null | tr -d '\n' || true)
 fi
+
+# Auto-generated list of protected domains for Authelia-side consumption
+AUTHELIA_DOMAINS_FILE="/scripts/authelia_domains"
 
 echo "[EDGE WATCHER] waiting for docker socket..."
 while [ ! -S /var/run/docker.sock ]; do
@@ -39,6 +48,45 @@ done
 
 echo "[EDGE WATCHER] nginx ready"
 
+generate_domain() {
+  tenant="$1"
+  class="$2"
+  base="$3"
+
+  [ -n "$tenant" ] || return 1
+  [ -n "$class" ] || return 1
+  [ -n "$base" ] || return 1
+
+  printf '%s.%s.%s\n' "$tenant" "$class" "$base"
+}
+
+request_certificate() {
+  domain="$1"
+
+  [ -n "$domain" ] || return 0
+
+  if ! docker inspect "$CERTBOT_CONTAINER" >/dev/null 2>&1; then
+    echo "[EDGE WATCHER] certbot container not found; skipping certificate request for $domain"
+    return 0
+  fi
+
+  echo "[EDGE WATCHER] requesting certificate for $domain"
+
+  # Use a stable contact email based on the base domain to avoid per-subdomain addresses
+  CERT_EMAIL="admin@${EDGE_BASE_DOMAIN}"
+
+  docker exec "$CERTBOT_CONTAINER" certbot certonly \
+    --webroot \
+    --webroot-path /var/www/certbot \
+    --email "$CERT_EMAIL" \
+    --agree-tos \
+    --no-eff-email \
+    --non-interactive \
+    --keep-until-expiring \
+    -d "$domain" \
+    >/dev/null 2>&1 || true
+}
+
 generate_configs() {
 
   if [ -f "$LOCK_FILE" ]; then
@@ -52,6 +100,8 @@ generate_configs() {
   mkdir -p "$TMP_DIR"
 
   FOUND=0
+  PROTECTED_DOMAINS_TMP="$TMP_DIR/authelia_domains.list"
+  : > "$PROTECTED_DOMAINS_TMP"
 
   for id in $(docker ps -q); do
 
@@ -61,7 +111,16 @@ generate_configs() {
     domain=$(docker inspect -f '{{ index .Config.Labels "'"$EDGE_DOMAIN_LABEL"'" }}' "$id" 2>/dev/null || true)
     port=$(docker inspect -f '{{ index .Config.Labels "'"$EDGE_PORT_LABEL"'" }}' "$id" 2>/dev/null || true)
     auth=$(docker inspect -f '{{ index .Config.Labels "'"$EDGE_AUTH_LABEL"'" }}' "$id" 2>/dev/null || true)
+    tenant=$(docker inspect -f '{{ index .Config.Labels "'"$EDGE_TENANT_LABEL"'" }}' "$id" 2>/dev/null || true)
+    class=$(docker inspect -f '{{ index .Config.Labels "'"$EDGE_CLASS_LABEL"'" }}' "$id" 2>/dev/null || true)
     name=$(docker inspect -f '{{ .Name }}' "$id" 2>/dev/null | sed 's#^/##')
+
+    # Backward-compatible:
+    # 1) use explicit edge.domain if present
+    # 2) otherwise derive from edge.tenant + edge.class
+    if [ -z "${domain:-}" ] && [ -n "${tenant:-}" ] && [ -n "${class:-}" ]; then
+      domain=$(generate_domain "$tenant" "$class" "$EDGE_BASE_DOMAIN" || true)
+    fi
 
     [ -n "${domain:-}" ] || continue
     [ -n "${port:-}" ] || continue
@@ -72,15 +131,22 @@ generate_configs() {
     CERT_PATH="/etc/letsencrypt/live/$domain/fullchain.pem"
 
     if docker exec "$NGINX_CONTAINER" test -f "$CERT_PATH" >/dev/null 2>&1; then
-        SSL_READY=1
+      SSL_READY=1
     else
-        SSL_READY=0
+      SSL_READY=0
+      request_certificate "$domain"
+
+      # Re-check after request attempt
+      if docker exec "$NGINX_CONTAINER" test -f "$CERT_PATH" >/dev/null 2>&1; then
+        SSL_READY=1
+      fi
     fi
 
     AUTH_ENABLED=0
     if [ -n "${AUTH_DOMAIN:-}" ]; then
       if [ "${auth:-}" = "true" ] || [ "${auth:-}" = "authelia" ]; then
         AUTH_ENABLED=1
+        echo "$domain" >> "$PROTECTED_DOMAINS_TMP"
       fi
     fi
 
@@ -235,6 +301,14 @@ EOF
     return
   fi
 
+  # Keep protected domain list for Authelia-side consumption
+  if [ -s "$PROTECTED_DOMAINS_TMP" ]; then
+    sort -u "$PROTECTED_DOMAINS_TMP" > "${PROTECTED_DOMAINS_TMP}.sorted"
+    cp "${PROTECTED_DOMAINS_TMP}.sorted" "$AUTHELIA_DOMAINS_FILE"
+  else
+    : > "$AUTHELIA_DOMAINS_FILE"
+  fi
+
   if ! diff -qr "$TMP_DIR" "$SITES_DIR" >/dev/null 2>&1; then
     echo "[EDGE WATCHER] applying new configs"
 
@@ -248,10 +322,10 @@ EOF
   fi
 
   if docker exec "$NGINX_CONTAINER" nginx -t >/dev/null 2>&1; then
-      docker exec "$NGINX_CONTAINER" nginx -s reload >/dev/null 2>&1
-      echo "[EDGE WATCHER] nginx reloaded"
+    docker exec "$NGINX_CONTAINER" nginx -s reload >/dev/null 2>&1
+    echo "[EDGE WATCHER] nginx reloaded"
   else
-      echo "[EDGE WATCHER] config invalid — reload skipped"
+    echo "[EDGE WATCHER] config invalid — reload skipped"
   fi
 
   rm -f "$LOCK_FILE"

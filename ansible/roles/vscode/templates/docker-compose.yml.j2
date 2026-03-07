@@ -26,8 +26,13 @@ services:
 
     labels:
       edge.enable: "true"
-      edge.domain: "{{ user.domain | default(user.username ~ '.' ~ vscode_default_domain_suffix) }}"
       edge.port: "{{ vscode_port }}"
+{% if user.domain is defined and user.domain | length > 0 %}
+      edge.domain: "{{ user.domain }}"
+{% else %}
+      edge.tenant: "{{ user.username }}"
+      edge.class: "dev"
+{% endif %}
 {% if vscode_enable_edge_auth | bool %}
       edge.auth: "authelia"
 {% endif %}
@@ -54,8 +59,13 @@ services:
 
     labels:
       edge.enable: "true"
-      edge.domain: "{{ vscode_domain }}"
       edge.port: "{{ vscode_port }}"
+{% if vscode_domain is defined and vscode_domain | length > 0 %}
+      edge.domain: "{{ vscode_domain }}"
+{% else %}
+      edge.tenant: "default"
+      edge.class: "dev"
+{% endif %}
 {% endif %}
 
 networks:

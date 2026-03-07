@@ -735,6 +735,80 @@ Final state becomes:
 22/tcp     ALLOW 10.8.0.0/24
 22/tcp     DENY  Anywhere
 
+...............
+before apply the repo improment;
+
+sudo ufw insert 1 allow 22/tcp
+sudo ufw status numbered
+
+Once everything is confirmed working:
+sudo ufw delete allow 22/tcp
+
+..........
+Recommended next run order:
+
+01-docker.yml
+
+02-edge-gateway.yml
+
+03a-coredns.yml
+
+update WireGuard client config to use DNS = 10.8.0.1
+
+reconnect VPN and test name resolution
+
+03-vscode.yml
+
+06-authelia.yml
+
+07-agent-zero.yml
+
+Before applying, set in vault:
+
+wireguard_client_dns: "10.8.0.1"
+
+vscode_users
+
+agent_zero_users
+
+authelia_domain and secrets
+
+One thing to be aware of: this update uses wildcard DNS automation, not per-container DNS record generation from the watcher. That keeps the system simpler and more stable while still making tenant domains automatic.
+
+i think we
+
+
+......
+Best next step
+
+Before rerunning playbooks:
+
+temporarily allow public SSH
+
+extract the updated repo
+
+patch the watcher with this label derivation
+
+deploy CoreDNS first
+..........
+
+Why this is the right small improvement
+
+It gives you:
+
+backward compatibility
+
+automatic tenant hostnames
+
+no manual nginx edits
+
+no per-tenant DNS edits because CoreDNS wildcard already handles it
+
+/////////////////
+chmod +x roles/authelia/files/render_access_control.py
+////
+
+
 
 
 &&&&&&&&&&&&&&&&&&&&&&&&&&&&&

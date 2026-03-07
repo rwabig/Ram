@@ -20,6 +20,5 @@ agent_zero_users: []
 # Example:
 # agent_zero_users:
 #   - username: alice
-#     domain: alice.a0.example.com
 #     auth_login: alice
 #     auth_password: "StrongPass!"   # store in ansible-vault

@@ -26,40 +26,42 @@
   become: true
 
   vars:
-    a0_restore_user: "{{ a0_restore_user | default('') }}"
-    a0_restore_backup: "{{ a0_restore_backup | default('') }}"
     a0_backup_root: "{{ agent_zero_base_path }}/backups"
     a0_safety_ts: "{{ lookup('pipe', 'date +%Y%m%d-%H%M%S') }}"
 
   tasks:
+    - name: Normalize restore inputs
+      set_fact:
+        a0_restore_user_resolved: "{{ a0_restore_user | default('', true) }}"
+        a0_restore_backup_resolved: "{{ a0_restore_backup | default('', true) }}"
+
     - name: Validate inputs
       assert:
         that:
-          - a0_restore_user | length > 0
+          - a0_restore_user_resolved | length > 0
         fail_msg: "Provide -e a0_restore_user=<username>"
 
     - name: Assert user exists in agent_zero_users
       assert:
         that:
-          - a0_restore_user in (agent_zero_users | map(attribute='username') | list)
-        fail_msg: "User {{ a0_restore_user }} not found in agent_zero_users"
+          - a0_restore_user_resolved in (agent_zero_users | map(attribute='username') | list)
+        fail_msg: "User {{ a0_restore_user_resolved }} not found in agent_zero_users"
 
     - name: Resolve backup file path (specific or latest)
       shell: |
         set -euo pipefail
-        user_dir='{{ a0_backup_root }}/{{ a0_restore_user }}'
+        user_dir='{{ a0_backup_root }}/{{ a0_restore_user_resolved }}'
         if [ ! -d "$user_dir" ]; then
           echo "NO_BACKUP_DIR" >&2
           exit 2
         fi
 
-        if [ -n '{{ a0_restore_backup | trim }}' ]; then
-          # If user provided a path, accept it; else assume filename under user's backup dir
-          if [ -f '{{ a0_restore_backup | trim }}' ]; then
-            echo '{{ a0_restore_backup | trim }}'
+        if [ -n '{{ a0_restore_backup_resolved | trim }}' ]; then
+          if [ -f '{{ a0_restore_backup_resolved | trim }}' ]; then
+            echo '{{ a0_restore_backup_resolved | trim }}'
             exit 0
           fi
-          cand="$user_dir/{{ a0_restore_backup | trim }}"
+          cand="$user_dir/{{ a0_restore_backup_resolved | trim }}"
           if [ -f "$cand" ]; then
             echo "$cand"
             exit 0
@@ -68,7 +70,6 @@
           exit 3
         fi
 
-        # Pick latest tar.gz
         latest=$(ls -1t "$user_dir"/*.tar.gz 2>/dev/null | head -n 1 || true)
         if [ -z "$latest" ]; then
           echo "NO_BACKUPS" >&2
@@ -77,22 +78,22 @@
         echo "$latest"
       args:
         executable: /bin/bash
-      register: a0_backup_resolved
+      register: a0_backup_resolved_cmd
       changed_when: false
 
     - name: Set restore backup path
       set_fact:
-        a0_restore_backup_path: "{{ a0_backup_resolved.stdout | trim }}"
+        a0_restore_backup_path: "{{ a0_backup_resolved_cmd.stdout | trim }}"
 
     - name: Stop target user container
-      command: docker compose stop agent-zero-{{ a0_restore_user }}
+      command: docker compose stop agent-zero-{{ a0_restore_user_resolved }}
       args:
         chdir: "{{ agent_zero_base_path }}"
 
     - name: Create safety snapshot of current data before restore
       vars:
-        user_dir: "{{ agent_zero_base_path }}/{{ a0_restore_user }}"
-        safety_dir: "{{ a0_backup_root }}/{{ a0_restore_user }}"
+        user_dir: "{{ agent_zero_base_path }}/{{ a0_restore_user_resolved }}"
+        safety_dir: "{{ a0_backup_root }}/{{ a0_restore_user_resolved }}"
         safety_file: "{{ safety_dir }}/safety-before-restore-{{ a0_safety_ts }}.tar.gz"
       block:
         - name: Ensure safety directory exists
@@ -108,23 +109,23 @@
 
     - name: Restore backup (extract into user directory)
       vars:
-        user_dir: "{{ agent_zero_base_path }}/{{ a0_restore_user }}"
+        user_dir: "{{ agent_zero_base_path }}/{{ a0_restore_user_resolved }}"
       command: >-
         /bin/sh -lc
         "tar -xzf '{{ a0_restore_backup_path }}' -C '{{ user_dir }}'"
 
     - name: Ensure permissions on user directory
       file:
-        path: "{{ agent_zero_base_path }}/{{ a0_restore_user }}"
+        path: "{{ agent_zero_base_path }}/{{ a0_restore_user_resolved }}"
         state: directory
         recurse: true
         mode: "u=rwX,g=rX,o="
 
     - name: Start (recreate) target user container
-      command: docker compose up -d --no-deps --force-recreate agent-zero-{{ a0_restore_user }}
+      command: docker compose up -d --no-deps --force-recreate agent-zero-{{ a0_restore_user_resolved }}
       args:
         chdir: "{{ agent_zero_base_path }}"
 
     - name: Show restore summary
       debug:
-        msg: "Restored {{ a0_restore_user }} from {{ a0_restore_backup_path }} (safety snapshot saved under {{ a0_backup_root }}/{{ a0_restore_user }})"
+        msg: "Restored {{ a0_restore_user_resolved }} from {{ a0_restore_backup_path }} (safety snapshot saved under {{ a0_backup_root }}/{{ a0_restore_user_resolved }})"

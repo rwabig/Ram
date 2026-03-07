@@ -17,6 +17,52 @@
   community.docker.docker_network:
     name: "{{ authelia_network }}"
 
+# ------------------------------------------------------------
+# Dynamic access-control generation helper
+# ------------------------------------------------------------
+
+- name: Install Authelia access-control render helper
+  copy:
+    src: render_access_control.py
+    dest: /usr/local/bin/render_access_control.py
+    mode: "0755"
+
+# Ensure the generated rules directory exists
+- name: Ensure generated rules directory exists
+  file:
+    path: "{{ authelia_generated_rules_file | dirname }}"
+    state: directory
+    mode: "0755"
+
+# Ensure domains file exists (watcher may not have created it yet)
+- name: Ensure watcher domains file exists
+  file:
+    path: "{{ authelia_domains_file }}"
+    state: touch
+    mode: "0644"
+
+- name: Render generated Authelia access-control fragment
+  command: >
+    python3 /usr/local/bin/render_access_control.py
+    --domains-file {{ authelia_domains_file }}
+    --output-file {{ authelia_generated_rules_file }}
+    --auth-domain {{ authelia_domain }}
+    --base-domain {{ authelia_base_domain }}
+  changed_when: false
+
+- name: Read generated Authelia access-control fragment
+  slurp:
+    src: "{{ authelia_generated_rules_file }}"
+  register: authelia_generated_rules_raw
+
+- name: Set generated Authelia access-control content
+  set_fact:
+    authelia_generated_rules: "{{ authelia_generated_rules_raw.content | b64decode }}"
+
+# ------------------------------------------------------------
+# Render configuration
+# ------------------------------------------------------------
+
 - name: Render Authelia configuration.yml
   template:
     src: configuration.yml.j2
@@ -54,3 +100,4 @@
     dest: "{{ edge_gateway_base_path | default('/opt/edge-gateway') }}/scripts/auth_domain"
     mode: "0644"
   notify: Restart Edge Watcher
+
