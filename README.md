@@ -1,21 +1,51 @@
 <div align="center">
 
 # 🐏 RAM
+
 ### Production-Grade Infrastructure as Code
 
-**Opinionated • Secure • Repeatable • Hardened by Default**
+Secure • Repeatable • Multi-Tenant • Hardened by Default
 
-Ansible-powered deployment stacks for Docker edge gateways, developer environments, and modern application platforms.
+Ansible-powered infrastructure platform for deploying secure developer environments, AI platforms, and application stacks using Docker.
 
-Built for **Ubuntu 24.04** and **real-world production systems**.
+Built for **Ubuntu 24.04** and designed for **real-world production systems**.
 
 <br>
 
 ![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04-orange?logo=ubuntu)
-![Docker](https://img.shields.io/badge/Docker-Containers-blue?logo=docker)
 ![Ansible](https://img.shields.io/badge/Ansible-Automation-black?logo=ansible)
+![Docker](https://img.shields.io/badge/Docker-Containers-blue?logo=docker)
 ![WireGuard](https://img.shields.io/badge/WireGuard-VPN-green)
-![License](https://img.shields.io/badge/License-MIT-blue)
+![NGINX](https://img.shields.io/badge/NGINX-Edge%20Gateway-009639?logo=nginx)
+![Authelia](https://img.shields.io/badge/Authelia-SSO%20%2B%20MFA-purple)
+![CoreDNS](https://img.shields.io/badge/CoreDNS-Service%20Discovery-blue)
+![License](https://img.shields.io/badge/License-MIT-lightgrey)
+
+<br>
+
+### Infrastructure Capabilities
+
+| Feature | Description |
+|------|------|
+| 🔐 Edge Gateway | Automatic routing, TLS, container discovery |
+| 🔑 Identity Layer | Authelia SSO + MFA |
+| 🌐 Internal DNS | CoreDNS over WireGuard |
+| 🔒 Private Network | WireGuard infrastructure VPN |
+| 🧑‍💻 Dev Environments | Multi-tenant VS Code containers |
+| 🧠 AI Platforms | Isolated Agent Zero environments |
+| 🚀 Application Platform | PHP / Apache / PostgreSQL stacks |
+
+<br>
+
+### Architecture Overview
+
+![RAM Architecture](docs/ram-system-architecture.svg)
+
+<br>
+
+### Request Flow
+
+![RAM Request Flow](docs/ram-request-flow.svg)
 
 <br>
 
@@ -25,168 +55,135 @@ Built for **Ubuntu 24.04** and **real-world production systems**.
 
 ---
 
-# Table of Contents
-
-- [Architecture](#architecture)
-- [What is RAM](#what-is-ram)
-- [Core Stacks](#core-stacks)
-- [Deployment Workflow](#deployment-workflow)
-- [Multi-Tenant Services](#multi-tenant-services)
-- [Security Model](#security-model)
-- [Repository Structure](#repository-structure)
-- [Operational Commands](#operational-commands)
-- [Roadmap](#roadmap)
-- [Philosophy](#philosophy)
-
----
-
-# Architecture
-
-<div align="center">
-
-![RAM Architecture](docs/ram-architecture.svg)
-
-</div>
-
-The platform uses a layered architecture designed for **secure multi-tenant infrastructure**.
-
+<br>
+RAM infrastructure is organized into layered components.
 
 Internet
 │
 ▼
-Edge Gateway (NGINX)
+Edge Gateway (NGINX + TLS + Auto Discovery)
 │
 ▼
-Authelia SSO / MFA
+Authelia (SSO + MFA)
 │
 ▼
 Application Layer
-├── VS Code (multi-tenant)
-├── Agent Zero (multi-tenant)
-└── PHP Applications
+├─ VS Code (multi-tenant)
+├─ Agent Zero (multi-tenant)
+└─ Application Platform
 │
 ▼
-CoreDNS (VPN internal DNS)
+CoreDNS (internal DNS)
 │
 ▼
 WireGuard VPN
 
 
+This architecture allows secure multi-tenant infrastructure with minimal manual configuration.
 ---
 
 # What is RAM
-
-**Ram** is a curated infrastructure repository focused on **production-ready deployment patterns**.
+**RAM** is a curated infrastructure repository designed for **production-grade deployments**, not demo stacks.
 
 It combines:
+| Layer | Technology |
+|-----|------|
+| Infrastructure Control | Ansible |
+| Runtime | Docker |
+| Edge Gateway | NGINX |
+| Authentication | Authelia |
+| Internal DNS | CoreDNS |
+| Private Network | WireGuard |
 
-- **Ansible** → infrastructure control plane
-- **Docker** → service runtime
-- **NGINX Edge Gateway** → traffic routing
-- **WireGuard VPN** → secure network
-- **Authelia** → authentication layer
-- **CoreDNS** → internal service discovery
+This approach provides:
+- reproducible infrastructure
+- secure defaults
+- automated service discovery
+- multi-tenant service isolation
+- simplified operations
 
-to provide a **secure, automated platform for modern development infrastructure**.
-
-Ram eliminates:
-
+RAM eliminates:
 - snowflake servers
 - undocumented infrastructure decisions
-- fragile copy-paste stacks
+- fragile manual deployments
 - security-last configurations
 
-Infrastructure becomes **version-controlled and reproducible**.
+Infrastructure becomes **version-controlled and repeatable**.
 
 ---
 
-# Core Stacks
-
+# Core Infrastructure Stacks
 ## 🔐 Edge Gateway
+The **Edge Gateway** is the entry point for all services.
 
-Production reverse proxy built with:
-
+Built with:
 - NGINX
 - Certbot
-- Edge Watcher (auto discovery)
+- Edge Watcher (Docker label discovery)
 
 Features:
-
-- automatic TLS
-- container discovery via Docker labels
+- automatic TLS certificates
+- container auto-discovery
 - dynamic routing
-- zero-downtime reload
+- zero-downtime configuration reload
 
-Containers labeled with:
-
-
+Services become publicly accessible by adding Docker labels:
 edge.enable=true
+edge.domain=service.example.com
+edge.port=80
 
-
-are automatically exposed through the gateway.
+The watcher automatically generates NGINX routing.
 
 ---
 
 ## 🔑 Authelia
+Authelia provides centralized authentication.
 
-Identity and authentication layer.
-
-Features:
-
+Capabilities:
 - Single Sign-On
 - Multi-Factor Authentication
-- centralized login portal
-- dynamic domain protection
+- session management
+- domain access policies
 
 NGINX integrates using:
-
-
 auth_request
 
-
-which protects applications **without modifying application containers**.
+This protects applications without modifying the application containers.
 
 ---
 
 ## 🌐 CoreDNS
 
-Internal DNS resolver available only through the VPN.
+CoreDNS provides **internal service discovery** through the VPN.
 
-Resolves:
+Wildcard zones resolve automatically:
+*.dev.example.com
+*.ai.example.com
 
-
-*.dev.unifypesacard.shop
-*.a0.unifypesacard.shop
-
-
-Example:
-
-
-alice.dev.unifypesacard.shop
-alice.a0.unifypesacard.shop
+Example internal services:
+alice.dev.example.com
+alice.ai.example.com
 
 
-All internal domains resolve to the **edge gateway**.
+All internal domains resolve to the **edge gateway IP**.
 
 ---
 
 ## 🔒 WireGuard
 
-Provides secure private infrastructure access.
+WireGuard provides the private infrastructure network.
 
-VPN network:
-
-
+Example subnet:
 10.8.0.0/24
 
 
 Used for:
 
-- private SSH
+- SSH administration
 - internal DNS
-- secure admin access
+- secure service access
 
-Example connection:
+Example SSH:
 
 
 ssh ubuntu@10.8.0.1
@@ -194,64 +191,74 @@ ssh ubuntu@10.8.0.1
 
 ---
 
-# Multi-Tenant Services
+# Multi-Tenant Platforms
 
-## VS Code (code-server)
+## VS Code Server
 
 Each user receives a private development container.
 
-Example:
+Example domain:
 
 
-alice.dev.unifypesacard.shop
+alice.dev.example.com
 
 
 Features:
 
 - persistent workspace
-- isolated environment
+- isolated container
 - Authelia authentication
-- automatic routing
+- automatic edge routing
 
 ---
 
 ## Agent Zero
 
-Private AI environments deployed per user.
+Agent Zero provides isolated AI environments.
 
-Example:
+Example domain:
 
 
-alice.a0.unifypesacard.shop
+alice.ai.example.com
 
 
 Each user receives:
 
-- isolated container
-- dedicated storage
-- Authelia protected access
+- dedicated container
+- persistent storage
+- Authelia protection
+- automated routing
 
 ---
 
-## PHP Application Platform
+## Application Platform
+
+RAM also supports application deployments.
 
 Example stack:
 
 - Apache 2.4
 - PHP 8.2
 - PostgreSQL 17 + PostGIS
-- Docker build pipeline
+- Docker container builds
 
-Applications integrate with the edge gateway using Docker labels.
+Applications integrate automatically with the edge gateway.
 
 ---
 
 # Deployment Workflow
 
-## 1. Configure Secrets
+## 1️⃣ Configure Secrets
+
+Copy the vault template:
 
 
 cp ansible/group_vars/all/vault.yml.example ansible/group_vars/all/vault.yml
+
+
+Encrypt the vault:
+
+
 ansible-vault encrypt ansible/group_vars/all/vault.yml
 
 
@@ -264,35 +271,54 @@ Vault stores:
 
 ---
 
-## 2. Deploy Infrastructure
+## 2️⃣ Deploy Infrastructure
+
+Recommended order:
 
 
 ansible-playbook ansible/playbooks/01-docker.yml
+
 ansible-playbook ansible/playbooks/02-edge-gateway.yml
+
 ansible-playbook ansible/playbooks/05-wireguard.yml --ask-vault-pass
+
 ansible-playbook ansible/playbooks/03a-coredns.yml
+
 ansible-playbook ansible/playbooks/03-vscode.yml
+
 ansible-playbook ansible/playbooks/06-authelia.yml --ask-vault-pass
+
 ansible-playbook ansible/playbooks/07-agent-zero.yml --ask-vault-pass
 
 
 ---
 
-## 3. Generate WireGuard Clients
+# WireGuard Client Management
 
-Peer configs are generated automatically and stored in:
+Clients can be created automatically.
+
+Example:
 
 
-ansible/artifacts/wireguard/<peer>.conf
+ansible-playbook ansible/playbooks/09-wireguard-peer.yml
+-e wg_peer_action=add
+-e wg_peer_name=laptop1
+--ask-vault-pass
 
 
-Import these files into the WireGuard client.
+Client configs are generated under:
+
+
+ansible/artifacts/wireguard/
+
+
+Import the config into your WireGuard client.
 
 ---
 
-## 4. Rolling Upgrades
+# Rolling Upgrades
 
-Upgrade Agent Zero safely:
+Agent Zero supports safe rolling upgrades.
 
 
 ansible-playbook ansible/playbooks/08-agent-zero-upgrade.yml
@@ -300,7 +326,7 @@ ansible-playbook ansible/playbooks/08-agent-zero-upgrade.yml
 -e agent_zero_target_image='agent0ai/agent-zero:latest'
 
 
-Backups are created automatically:
+Automatic backups are created:
 
 
 /opt/agent-zero/backups/<user>/a0usr-<timestamp>.tar.gz
@@ -310,24 +336,24 @@ Backups are created automatically:
 
 # Security Model
 
-Ram enforces security at multiple layers.
+RAM uses layered security.
 
-## Network
+### Network
 
 - WireGuard VPN
 - UFW firewall
 - Docker network isolation
 
-## Identity
+### Identity
 
 - Authelia SSO
-- Multi-factor authentication
+- MFA authentication
 
-## Runtime Isolation
+### Runtime Isolation
 
 - per-user containers
-- hardened NGINX configuration
-- read-only infrastructure containers
+- hardened NGINX
+- minimal container privileges
 
 ---
 
@@ -343,7 +369,8 @@ ram/
 │ └── group_vars/
 │
 ├── docs/
-│ └── ram-architecture.svg
+│ ├── ram-system-architecture.svg
+│ └── ram-request-flow.svg
 │
 ├── artifacts/
 │ └── wireguard/
@@ -367,7 +394,7 @@ Check edge watcher:
 docker logs edge-watcher
 
 
-Check VPN:
+Check VPN status:
 
 
 sudo wg show
@@ -381,30 +408,29 @@ ls /opt/edge-gateway/certbot/conf/live
 
 ---
 
-# Philosophy
+# Infrastructure Philosophy
 
-Ram follows strict infrastructure principles:
+RAM follows strict infrastructure principles.
 
 - secure by default
 - minimal but complete
 - infrastructure is documentation
-- no hidden magic
+- reproducible deployments
 - production before convenience
 
 ---
 
 # Roadmap
 
-Ram will expand into:
+Future expansions include:
 
-- Kubernetes infrastructure
+- Kubernetes deployment patterns
 - observability stacks
 - CI/CD pipelines
-- data platforms
 - distributed AI infrastructure
-- edge compute
+- edge compute platforms
 
-All with the same **production discipline**.
+All following the same **production-grade discipline**.
 
 ---
 
