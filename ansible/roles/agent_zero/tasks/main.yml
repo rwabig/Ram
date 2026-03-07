@@ -19,21 +19,33 @@
   community.docker.docker_network:
     name: "{{ agent_zero_network }}"
 
-- name: Create per-user directories
+- name: Ensure per-user root directory exists
+  file:
+    path: "{{ agent_zero_base_path }}/{{ item.username }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ agent_zero_users }}"
+  loop_control:
+    label: "{{ item.username }}"
+
+- name: Create per-user data directory
   file:
     path: "{{ agent_zero_base_path }}/{{ item.username }}/usr"
     state: directory
     mode: "0755"
   loop: "{{ agent_zero_users }}"
+  loop_control:
+    label: "{{ item.username }}"
 
 - name: Render per-user .env files
   template:
     src: user.env.j2
-    dest: "{{ agent_zero_base_path }}/{{ item.username }}/.env"
+    dest: "{{ agent_zero_base_path }}/{{ user.username }}/.env"
     mode: "0600"
   loop: "{{ agent_zero_users }}"
   loop_control:
     loop_var: user
+    label: "{{ user.username }}"
   notify: Restart Agent Zero stack
 
 - name: Render docker-compose.yml
@@ -47,9 +59,12 @@
   command: docker compose pull
   args:
     chdir: "{{ agent_zero_base_path }}"
+  changed_when: false
+  when: not (agent_zero_render_only | default(false) | bool)
 
 - name: Start Agent Zero stack
   command: docker compose up -d
   args:
     chdir: "{{ agent_zero_base_path }}"
-  when: not (agent_zero_render_only | bool)
+  changed_when: false
+  when: not (agent_zero_render_only | default(false) | bool)

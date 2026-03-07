@@ -82,7 +82,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./nginx/sites:/sites
-      - ./scripts:/scripts:ro
+      - ./scripts:/scripts
 
     entrypoint: /bin/sh
     command: /scripts/watch.sh

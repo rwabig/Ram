@@ -27,14 +27,12 @@
     dest: /usr/local/bin/render_access_control.py
     mode: "0755"
 
-# Ensure the generated rules directory exists
 - name: Ensure generated rules directory exists
   file:
     path: "{{ authelia_generated_rules_file | dirname }}"
     state: directory
     mode: "0755"
 
-# Ensure domains file exists (watcher may not have created it yet)
 - name: Ensure watcher domains file exists
   file:
     path: "{{ authelia_domains_file }}"
@@ -94,10 +92,15 @@
 # Create auth_domain file consumed by the Edge Watcher.
 # ============================================================
 
+- name: Ensure edge watcher scripts directory exists
+  file:
+    path: "{{ edge_gateway_base_path | default('/opt/edge-gateway') }}/scripts"
+    state: directory
+    mode: "0755"
+
 - name: Write Authelia auth domain for Edge Watcher
   copy:
     content: "{{ authelia_domain }}\n"
     dest: "{{ edge_gateway_base_path | default('/opt/edge-gateway') }}/scripts/auth_domain"
     mode: "0644"
   notify: Restart Edge Watcher
-

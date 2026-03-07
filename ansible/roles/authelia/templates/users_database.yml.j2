@@ -6,7 +6,7 @@ users:
     password: "{{ u.password_hash }}"
     email: "{{ u.email | default(u.username ~ '@example.com') }}"
     groups:
-{% for g in (u.groups | default(['a0_users'])) %}
+{% for g in (u.groups | default(['dev_users', 'a0_users'])) %}
       - "{{ g }}"
 {% endfor %}
 {% endfor %}

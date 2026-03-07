@@ -5,3 +5,4 @@ app_root: "/srv/apps/{{ app_name }}"
 edge_gateway_base_path: "/opt/edge-gateway"
 edge_gateway_network: "edge-net"
 app_network: "app_net"
+app_enable_edge_auth: false

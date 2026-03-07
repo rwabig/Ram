@@ -3,7 +3,7 @@
 # EDGE GATEWAY — CORE DIRECTORIES
 # ============================================================
 
-- name: Create base directory
+- name: Create edge gateway base directory
   file:
     path: "{{ edge_gateway_base_path }}"
     state: directory
@@ -15,7 +15,6 @@
     state: directory
     mode: "0755"
 
-# This directory will be mounted directly to /etc/nginx/conf.d
 - name: Create nginx sites directory (mounted as conf.d)
   file:
     path: "{{ edge_gateway_base_path }}/nginx/sites"
@@ -47,12 +46,21 @@
 # DOCKER NETWORK
 # ============================================================
 
-- name: Create docker network
+- name: Ensure edge docker network exists
   community.docker.docker_network:
     name: "{{ edge_gateway_network }}"
 
 # ============================================================
-# DOCKER LABEL AUTO DISCOVERY (ZERO-TOUCH ONBOARDING)
+# LEGACY / BOOTSTRAP DISCOVERY
+#
+# This discovery is kept for backward compatibility and bootstrap
+# certificate handling for explicitly-labeled containers using:
+#   edge.enable=true
+#   edge.domain=<fqdn>
+#   edge.port=<port>
+#
+# Ongoing autonomous routing, tenant-derived domains, and automatic
+# certificate issuance are handled by edge-watcher (watch.sh).
 # ============================================================
 
 - name: Get running container IDs
@@ -60,7 +68,7 @@
   register: running_containers
   changed_when: false
 
-- name: Initialize dynamic apps list
+- name: Initialize legacy bootstrap app list
   set_fact:
     edge_gateway_apps_dynamic: []
 
@@ -70,7 +78,7 @@
   loop: "{{ running_containers.stdout_lines }}"
   changed_when: false
 
-- name: Build edge apps from docker labels
+- name: Build legacy bootstrap edge app list from explicit docker labels
   set_fact:
     edge_gateway_apps_dynamic: "{{ edge_gateway_apps_dynamic + [ {
         'domain': container.Config.Labels['edge.domain'],
@@ -84,21 +92,28 @@
     - container.Config.Labels is defined
     - container.Config.Labels['edge.enable'] is defined
     - container.Config.Labels['edge.enable'] == "true"
+    - container.Config.Labels['edge.domain'] is defined
+    - container.Config.Labels['edge.domain'] | length > 0
+    - container.Config.Labels['edge.port'] is defined
+    - container.Config.Labels['edge.port'] | length > 0
 
-- name: Validate discovered edge apps
+- name: Validate discovered legacy bootstrap apps
   assert:
     that:
       - edge_gateway_apps_dynamic | length > 0
-    fail_msg: "No containers found with edge.enable=true"
+    fail_msg: "No containers found with explicit edge.enable=true + edge.domain labels"
     quiet: true
   ignore_errors: true
 
-- name: Remove duplicate edge apps
+- name: Remove duplicate legacy bootstrap apps
   set_fact:
     edge_gateway_apps_dynamic: "{{ edge_gateway_apps_dynamic | unique(attribute='domain') }}"
 
 # ============================================================
 # CLEAN OLD SITE CONFIGS
+#
+# The watcher is the source of truth for generated site configs.
+# Cleaning here ensures a fresh base before the stack starts.
 # ============================================================
 
 - name: Discover existing nginx site configs
@@ -118,19 +133,41 @@
 # CONFIGURATION FILES
 # ============================================================
 
-- name: Render docker-compose
+- name: Render edge gateway docker-compose.yml
   template:
     src: docker-compose.yml.j2
     dest: "{{ edge_gateway_base_path }}/docker-compose.yml"
+    mode: "0644"
 
-- name: Render nginx.conf
+- name: Render global nginx.conf
   template:
     src: nginx.conf.j2
     dest: "{{ edge_gateway_base_path }}/nginx/nginx.conf"
+    mode: "0644"
   notify: Reload edge nginx
 
 # ============================================================
-# START STACK (FORCE RECREATE SAFE)
+# LEGACY TLS SCRIPTS
+#
+# These scripts are preserved for backward compatibility and
+# manual/bootstrap use. New tenant certificates are expected to be
+# issued automatically by edge-watcher.
+# ============================================================
+
+- name: Install legacy TLS bootstrap script
+  template:
+    src: init-letsencrypt.sh.j2
+    dest: "{{ edge_gateway_base_path }}/init-letsencrypt.sh"
+    mode: "0755"
+
+- name: Install legacy TLS renewal script
+  template:
+    src: renew-certs.sh.j2
+    dest: "{{ edge_gateway_base_path }}/renew-certs.sh"
+    mode: "0755"
+
+# ============================================================
+# START STACK
 # ============================================================
 
 - name: Start Edge Gateway stack
@@ -160,29 +197,21 @@
   failed_when: edge_health.stdout != "healthy"
 
 # ============================================================
-# AUTO TLS ORCHESTRATION
+# OPTIONAL LEGACY TLS BOOTSTRAP
+#
+# This only applies to explicitly discovered edge.domain entries.
+# New watcher-managed tenant domains should rely on automatic
+# certificate issuance from watch.sh.
 # ============================================================
 
-- name: Install TLS bootstrap script
-  template:
-    src: init-letsencrypt.sh.j2
-    dest: "{{ edge_gateway_base_path }}/init-letsencrypt.sh"
-    mode: "0755"
-
-- name: Install TLS renewal script
-  template:
-    src: renew-certs.sh.j2
-    dest: "{{ edge_gateway_base_path }}/renew-certs.sh"
-    mode: "0755"
-
-- name: Check if certificate exists
+- name: Check if legacy bootstrap certificate exists
   stat:
     path: "{{ edge_gateway_base_path }}/certbot/conf/live/{{ item.domain }}/fullchain.pem"
   loop: "{{ edge_gateway_apps_dynamic }}"
   register: edge_tls_stats
   when: edge_gateway_apps_dynamic | length > 0
 
-- name: Bootstrap TLS certificates
+- name: Bootstrap legacy TLS certificates
   command: "{{ edge_gateway_base_path }}/init-letsencrypt.sh {{ item.item.domain }}"
   args:
     chdir: "{{ edge_gateway_base_path }}"
@@ -200,6 +229,12 @@
 
 # ============================================================
 # WATCHER INSTALL
+#
+# The watcher is the primary automation engine for:
+# - route generation
+# - tenant-derived domains
+# - automatic certificate issuance
+# - Authelia protected-domain registration
 # ============================================================
 
 - name: Install edge watcher script

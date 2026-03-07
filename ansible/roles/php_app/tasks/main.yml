@@ -5,7 +5,7 @@
     state: directory
     owner: root
     group: root
-    mode: '0755'
+    mode: "0755"
 
 - name: Ensure GitHub is in known_hosts
   known_hosts:
@@ -13,17 +13,26 @@
     key: "{{ lookup('pipe', 'ssh-keyscan -t ed25519 github.com') }}"
     path: /root/.ssh/known_hosts
 
+- name: Ensure edge gateway network exists
+  community.docker.docker_network:
+    name: "{{ edge_gateway_network }}"
+
+- name: Ensure app network exists
+  community.docker.docker_network:
+    name: "{{ app_network }}"
+
 - name: Clone or update app repository
   git:
     repo: "{{ app_repo }}"
     dest: "{{ app_root }}"
     version: "{{ app_branch }}"
-    force: yes
+    force: true
 
 - name: Copy Dockerfile template
   template:
     src: Dockerfile.j2
     dest: "{{ app_root }}/Dockerfile"
+    mode: "0644"
 
 - name: Build PHP image
   community.docker.docker_image:
@@ -35,7 +44,7 @@
       pull: true
 
 - name: Run PHP container
-  docker_container:
+  community.docker.docker_container:
     name: "{{ app_container_name }}"
     image: "{{ app_image_name }}"
     recreate: true
@@ -54,6 +63,9 @@
       edge.enable: "true"
       edge.domain: "{{ app_domain }}"
       edge.port: "80"
+{% raw %}{% if app_enable_edge_auth | default(false) | bool %}{% endraw %}
+      edge.auth: "authelia"
+{% raw %}{% endif %}{% endraw %}
     state: started
 
 # ============================================================

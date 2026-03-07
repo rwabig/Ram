@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="700" xmlns="http://www.w3.org/2000/svg" font-family="Arial, Helvetica, sans-serif">
+
+  <style>
+    .box { fill:#f7f7f7; stroke:#333; stroke-width:2; rx:10; ry:10; }
+    .title { font-size:18px; font-weight:bold; }
+    .label { font-size:14px; }
+    .arrow { stroke:#333; stroke-width:2; marker-end:url(#arrowhead); }
+  </style>
+
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7"
+            refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333"/>
+    </marker>
+  </defs>
+
+  <!-- Internet -->
+  <rect x="500" y="20" width="200" height="60" class="box"/>
+  <text x="600" y="55" text-anchor="middle" class="title">Internet</text>
+
+  <!-- Edge Gateway -->
+  <rect x="450" y="120" width="300" height="80" class="box"/>
+  <text x="600" y="155" text-anchor="middle" class="title">Edge Gateway</text>
+  <text x="600" y="180" text-anchor="middle" class="label">NGINX + Certbot + Watcher</text>
+
+  <!-- Authelia -->
+  <rect x="450" y="240" width="300" height="80" class="box"/>
+  <text x="600" y="275" text-anchor="middle" class="title">Authelia</text>
+  <text x="600" y="300" text-anchor="middle" class="label">SSO / MFA Authentication</text>
+
+  <!-- Apps -->
+  <rect x="150" y="380" width="250" height="90" class="box"/>
+  <text x="275" y="415" text-anchor="middle" class="title">VS Code</text>
+  <text x="275" y="440" text-anchor="middle" class="label">Multi-tenant Dev Environments</text>
+
+  <rect x="475" y="380" width="250" height="90" class="box"/>
+  <text x="600" y="415" text-anchor="middle" class="title">Agent Zero</text>
+  <text x="600" y="440" text-anchor="middle" class="label">Per-user AI Containers</text>
+
+  <rect x="800" y="380" width="250" height="90" class="box"/>
+  <text x="925" y="415" text-anchor="middle" class="title">PHP Applications</text>
+  <text x="925" y="440" text-anchor="middle" class="label">Apache + PHP + PostgreSQL</text>
+
+  <!-- CoreDNS -->
+  <rect x="450" y="520" width="300" height="70" class="box"/>
+  <text x="600" y="555" text-anchor="middle" class="title">CoreDNS</text>
+  <text x="600" y="575" text-anchor="middle" class="label">Internal DNS (VPN)</text>
+
+  <!-- WireGuard -->
+  <rect x="450" y="620" width="300" height="60" class="box"/>
+  <text x="600" y="655" text-anchor="middle" class="title">WireGuard VPN</text>
+
+  <!-- Arrows -->
+  <line x1="600" y1="80" x2="600" y2="120" class="arrow"/>
+  <line x1="600" y1="200" x2="600" y2="240" class="arrow"/>
+  <line x1="600" y1="320" x2="600" y2="380" class="arrow"/>
+  <line x1="600" y1="470" x2="600" y2="520" class="arrow"/>
+  <line x1="600" y1="590" x2="600" y2="620" class="arrow"/>
+
+  <!-- App arrows -->
+  <line x1="600" y1="320" x2="275" y2="380" class="arrow"/>
+  <line x1="600" y1="320" x2="925" y2="380" class="arrow"/>
+
+</svg>

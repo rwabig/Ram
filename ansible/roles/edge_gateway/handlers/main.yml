@@ -3,18 +3,11 @@
 # EDGE GATEWAY — HANDLERS
 # ============================================================
 
-# ------------------------------------------------------------
-# VALIDATE NGINX CONFIG BEFORE RELOAD
-# ------------------------------------------------------------
-- name: Validate nginx config
-  command: docker exec edge-nginx nginx -t
-  changed_when: false
-  failed_when: false
-
-# ------------------------------------------------------------
-# RELOAD EDGE NGINX (ZERO DOWNTIME)
-# ------------------------------------------------------------
 - name: Reload edge nginx
-  command: docker exec edge-nginx nginx -s reload
+  shell: |
+    set -e
+    docker exec edge-nginx nginx -t
+    docker exec edge-nginx nginx -s reload
+  args:
+    executable: /bin/bash
   changed_when: false
-  failed_when: false

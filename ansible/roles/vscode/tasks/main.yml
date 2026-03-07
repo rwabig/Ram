@@ -1,29 +1,30 @@
 ---
+# ============================================================
+# VS CODE — MULTI-TENANT DEPLOYMENT
+# ============================================================
+
+- name: Assert user list is provided
+  assert:
+    that:
+      - vscode_users | length > 0
+    fail_msg: "vscode_users is empty. Define at least one VS Code user."
+
 - name: Ensure vscode base directory exists
   file:
     path: "{{ vscode_base_path }}"
     state: directory
     mode: "0755"
 
-- name: Build effective VS Code user list
-  set_fact:
-    vscode_effective_users: >-
-      {{
-        vscode_users
-        if (vscode_users | length > 0)
-        else [ {
-          'username': vscode_container_name,
-          'domain': vscode_domain,
-          'password': vscode_default_password
-        } ]
-      }}
+- name: Ensure edge network exists
+  community.docker.docker_network:
+    name: "{{ edge_gateway_network }}"
 
 - name: Ensure per-user root directory exists
   file:
     path: "{{ vscode_base_path }}/{{ item.username }}"
     state: directory
     mode: "0755"
-  loop: "{{ vscode_effective_users }}"
+  loop: "{{ vscode_users }}"
   loop_control:
     label: "{{ item.username }}"
 
@@ -32,7 +33,7 @@
     path: "{{ vscode_base_path }}/{{ item.username }}/workspace"
     state: directory
     mode: "0755"
-  loop: "{{ vscode_effective_users }}"
+  loop: "{{ vscode_users }}"
   loop_control:
     label: "{{ item.username }}"
 
@@ -41,7 +42,7 @@
     path: "{{ vscode_base_path }}/{{ item.username }}/config"
     state: directory
     mode: "0755"
-  loop: "{{ vscode_effective_users }}"
+  loop: "{{ vscode_users }}"
   loop_control:
     label: "{{ item.username }}"
 
@@ -55,10 +56,3 @@
   command: docker compose up -d
   args:
     chdir: "{{ vscode_base_path }}"
-  changed_when: false
-
-- name: Ensure edge apps directory exists
-  file:
-    path: "{{ edge_gateway_base_path }}/apps"
-    state: directory
-    mode: "0755"
