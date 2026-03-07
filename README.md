@@ -415,24 +415,3 @@ All with the same **production discipline**.
 **Powered by Rwabigimbo**
 
 </div>
-Result
-
-Your README will now look like a serious infrastructure project, similar to projects like:
-
-kubernetes/kops
-
-hashicorp/nomad
-
-grafana/loki
-
-traefik
-
-It will feel:
-
-professional
-
-credible
-
-easy to onboard contributors
-
-suitable for open-source release.
