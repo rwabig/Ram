@@ -6,6 +6,8 @@
 - name: Deploy Agent Zero (per-user containers)
   hosts: agent_zero_servers
   become: true
+  vars_files:
+    - "../group_vars/all/vault.yml"
 
   roles:
     - role: agent_zero

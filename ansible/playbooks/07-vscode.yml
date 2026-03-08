@@ -7,6 +7,8 @@
 - name: Deploy VS Code
   hosts: vscode_servers
   become: true
+  vars_files:
+    - "../group_vars/all/vault.yml"
 
   roles:
     - role: vscode

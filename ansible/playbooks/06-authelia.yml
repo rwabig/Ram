@@ -6,6 +6,8 @@
 - name: Deploy Authelia and integrate with Edge Gateway
   hosts: authelia_servers
   become: true
+  vars_files:
+    - "../group_vars/all/vault.yml"
 
   roles:
     - role: authelia
