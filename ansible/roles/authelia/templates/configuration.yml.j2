@@ -3,13 +3,14 @@ theme: dark
 default_redirection_url: "https://{{ authelia_domain }}"
 
 server:
-  host: 0.0.0.0
-  port: {{ authelia_port }}
+  address: "tcp://0.0.0.0:{{ authelia_port }}/"
 
 log:
   level: info
 
-jwt_secret: "{{ authelia_jwt_secret }}"
+identity_validation:
+  reset_password:
+    jwt_secret: "{{ authelia_jwt_secret }}"
 
 authentication_backend:
   file:
@@ -22,10 +23,14 @@ access_control:
 {{ authelia_generated_rules | indent(2, true) }}
 
 session:
-  name: authelia_session
   secret: "{{ authelia_session_secret }}"
   expiration: 1h
   inactivity: 5m
+  cookies:
+    - domain: "{{ authelia_domain | regex_replace('^[^.]+\\.', '') }}"
+      authelia_url: "https://{{ authelia_domain }}"
+      default_redirection_url: "https://{{ authelia_domain }}"
+      name: authelia_session
   redis:
     host: authelia-redis
     port: 6379
