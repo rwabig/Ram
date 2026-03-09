@@ -47,3 +47,5 @@ authelia_protected_domains: []
 authelia_base_domain: "unifypesacard.shop"
 authelia_domains_file: "/opt/edge-gateway/scripts/authelia_domains"
 authelia_generated_rules_file: "{{ authelia_base_path }}/config/access-control-generated.yml"
+authelia_default_redirection_url: "https://cgs.unifypesacard.shop"
+
