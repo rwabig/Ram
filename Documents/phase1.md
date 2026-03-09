@@ -215,7 +215,7 @@ ansible-playbook playbooks/09-wireguard-peer.yml \
 ansible-playbook playbooks/10-agent-zero-restore.yml
 
 # or
-ansible-playbook -i inventory 04-deploy-php-app.yml
+ansible-playbook -i inventory/production.ini playbooks/03-vscode.yml --ask-vault-pass
 
 &&&&&&&&&&&&&&&&&&&&&&
 
