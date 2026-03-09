@@ -28,8 +28,8 @@ coredns_static_domains:
 # Wildcard internal app zones that should automatically resolve to the edge gateway.
 # New tenants work without DNS edits as long as routing labels exist in edge-nginx.
 coredns_wildcard_zones:
-  - "*.dev.unifypesacard.shop"
-  - "*.a0.unifypesacard.shop"
+  - "dev.unifypesacard.shop"
+  - "a0.unifypesacard.shop"
 
 # Restrict DNS access to VPN clients only.
 coredns_manage_ufw: true
