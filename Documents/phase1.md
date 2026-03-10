@@ -1011,3 +1011,22 @@ services:
 
 
 That’s all.
+&&&&&&&&&&
+
+
+Best fix now
+
+Force a clean regeneration of watcher-managed site configs.
+
+Run:
+
+sudo rm -f /opt/edge-gateway/nginx/sites/*.conf
+sudo docker restart edge-watcher
+sleep 5
+sudo docker logs --tail=100 edge-watcher
+
+Then verify:
+
+grep -R "auth.example.com" /opt/edge-gateway/nginx/sites 2>/dev/null
+ls -la /opt/edge-gateway/nginx/sites
+sudo docker exec edge-nginx nginx -t
