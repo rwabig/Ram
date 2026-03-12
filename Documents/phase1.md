@@ -735,6 +735,77 @@ Final state becomes:
 22/tcp     ALLOW 10.8.0.0/24
 22/tcp     DENY  Anywhere
 
+Add rate limiting to WireGuard port
+This prevents brute-force floods
+
+sudo ufw delete allow 51820/udp
+sudo ufw limit 51820/udp
+
+.....
+
+Step 1 — Insert WireGuard rule at position 1
+
+Run:
+sudo ufw delete limit 51820/udp
+
+sudo ufw insert 1 limit 51820/udp
+
+Now UFW will push every other rule down by one number.
+*****
+sudo ufw delete deny 22/tcp
+sudo ufw insert 8 allow 22/tcp
+*****
+sudo ufw status numbered
+Status: active
+
+     To                         Action      From
+     --                         ------      ----
+[ 1] 51820/udp                  LIMIT IN    Anywhere
+[ 2] 80/tcp                     ALLOW IN    Anywhere
+[ 3] 443/tcp                    ALLOW IN    10.8.0.0/24
+[ 4] 22/tcp                     LIMIT IN    10.8.0.0/24
+[ 5] 53/udp                     ALLOW IN    10.8.0.0/24
+[ 6] 53/tcp                     ALLOW IN    10.8.0.0/24
+[ 7] 443/tcp                    DENY IN     Anywhere
+[ 8] 22/tcp                     DENY IN     Anywhere
+[ 9] 53/udp                     DENY IN     Anywhere
+[10] 53/tcp                     DENY IN     Anywhere
+...............
+
+Optional Hardening (Recommended)
+
+Two simple improvements used on hardened servers:
+
+1️⃣ Rate-limit SSH (even on VPN)
+sudo ufw limit from 10.8.0.0/24 to any port 22 proto tcp
+
+2️⃣ Prevents brute-force attempts if a VPN device is compromised.
+
+Log blocked attacks
+
+Enable logging:
+sudo ufw logging medium
+
+Then view:
+sudo journalctl -k | grep UFW
+
+Useful for detecting scans.
+
+............
+
+One Last Check (Important)
+Verify default policy:
+
+sudo ufw status verbose
+
+You should see:
+Default: deny (incoming)
+
+That ensures all other ports are blocked automatically.
+
+.........
+show me one very useful monitoring command that lets you watch live firewall attack attempts hitting the server.
+
 ...............
 before apply the repo improment;
 
