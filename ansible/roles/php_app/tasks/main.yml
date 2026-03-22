@@ -43,6 +43,21 @@
       path: "{{ app_root }}"
       pull: true
 
+- name: Build edge labels for PHP app
+  set_fact:
+    php_app_edge_labels: >-
+      {{
+        {
+          'edge.enable': 'true',
+          'edge.domain': app_domain,
+          'edge.port': '80'
+        }
+        | combine(
+            (app_enable_edge_auth | default(false) | bool)
+            | ternary({'edge.auth': 'authelia'}, {})
+          )
+      }}
+
 - name: Run PHP container
   community.docker.docker_container:
     name: "{{ app_container_name }}"
@@ -59,13 +74,7 @@
       DB_NAME: "{{ db_name }}"
       DB_USER: "{{ db_user }}"
       DB_PASS: "{{ db_password }}"
-    labels:
-      edge.enable: "true"
-      edge.domain: "{{ app_domain }}"
-      edge.port: "80"
-{% raw %}{% if app_enable_edge_auth | default(false) | bool %}{% endraw %}
-      edge.auth: "authelia"
-{% raw %}{% endif %}{% endraw %}
+    labels: "{{ php_app_edge_labels }}"
     state: started
 
 # ============================================================
