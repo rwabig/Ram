@@ -3,13 +3,13 @@
 # WireGuard peer add/remove (one command onboarding)
 #
 # Usage:
-#   ansible-playbook -i inventory/production.ini playbooks/09-wireguard-peer.yml \
+#   ansible-playbook -i inventory/production.ini playbooks/04a-wireguard-peer.yml \
 #     -e wg_peer_action=add -e wg_peer_name=laptop3 --ask-vault-pass
 #
-#   ansible-playbook -i inventory/production.ini playbooks/09-wireguard-peer.yml \
+#   ansible-playbook -i inventory/production.ini playbooks/04a-wireguard-peer.yml \
 #     -e wg_peer_action=add -e wg_peer_name=laptop3 -e wg_peer_ip=10.8.0.12 --ask-vault-pass
 #
-#   ansible-playbook -i inventory/production.ini playbooks/09-wireguard-peer.yml \
+#   ansible-playbook -i inventory/production.ini playbooks/04a-wireguard-peer.yml \
 #     -e wg_peer_action=remove -e wg_peer_name=laptop3 --ask-vault-pass
 # ============================================================
 
@@ -21,12 +21,10 @@
   tasks:
     - name: Normalize inputs and set operational defaults
       set_fact:
-        # Peer inputs
         wg_peer_action_norm: "{{ (wg_peer_action | default('add')) | lower | trim }}"
         wg_peer_name_norm: "{{ (wg_peer_name | default('')) | trim }}"
         wg_peer_ip_norm: "{{ (wg_peer_ip | default('')) | trim }}"
 
-        # Operational defaults (safe literals; vault/group_vars override by providing the real vars)
         wg_interface: "{{ wireguard_interface | default('wg0') }}"
         wg_endpoint: "{{ wireguard_endpoint | default('CHANGE_ME_VPN_ENDPOINT') }}"
         wg_client_allowed_ips: "{{ wireguard_client_allowed_ips | default('10.8.0.0/24') }}"
@@ -67,15 +65,12 @@
       shell: |
         set -euo pipefail
 
-        # Extract used /32 peer IPs from existing config.
-        # If there are no peers yet, grep returns 1; treat as "no used IPs".
         used=$(
           (grep -E '^AllowedIPs\s*=\s*[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/32' -h /etc/wireguard/{{ wg_interface }}.conf 2>/dev/null || true) \
           | awk -F'[ =/]+' '{print $3}' \
           | sort -u
         )
 
-        # Choose next free in 10.8.0.10-10.8.0.250
         for i in $(seq 10 250); do
           cand="10.8.0.${i}"
           if ! echo "$used" | grep -qx "$cand"; then
@@ -178,8 +173,8 @@
           # {{ wg_peer_name_norm }}
           PrivateKey = {{ wg_peer_private_key }}
           Address = {{ wg_peer_ip_resolved }}/32
-{% if wireguard_client_dns is defined and (wireguard_client_dns | length > 0) %}          DNS = {{ wireguard_client_dns }}
-{% endif %}
+          {{ ('DNS = ' ~ wireguard_client_dns) if (wireguard_client_dns is defined and (wireguard_client_dns | string | length > 0)) else '' }}
+
           [Peer]
           PublicKey = {{ wg_server_pub.stdout | trim }}
           Endpoint = {{ wg_endpoint }}
